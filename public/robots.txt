@@ -1,0 +1,5 @@
+User-agent: *
+Disallow: /admin
+Disallow: /data/
+
+Sitemap: https://esportsdesa.id/sitemap.xml

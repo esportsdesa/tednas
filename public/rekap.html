@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Rekap Tim | TEDNas 2027</title>
+<link rel="icon" href="favicon.ico" sizes="48x48">
+<link rel="icon" type="image/png" sizes="192x192" href="img/ikon-192.png">
+<link rel="apple-touch-icon" href="img/ikon-180.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=League+Gothic&family=Montserrat:wght@500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div class="halaman-kepala"><div class="isi">
+  <h1>SIAPA SAJA YANG SUDAH DAFTAR</h1>
+  <p>Daftar ini terus bertambah. Desamu sudah ada?</p>
+</div></div>
+<main class="halaman">
+  <div class="ringkas">
+    <div><b id="r-tim">-</b><span>tim terdaftar</span></div>
+    <div><b id="r-ver">-</b><span>terverifikasi</span></div>
+    <div><b id="r-kab">-</b><span>kabupaten</span></div>
+    <div><b id="r-prov">-</b><span>dari 37 provinsi</span></div>
+  </div>
+
+  <div class="kartu">
+    <h2>Per provinsi</h2>
+    <div class="batang" id="batang"></div>
+  </div>
+
+  <div class="kartu">
+    <h2>Semua tim</h2>
+    <div class="saring">
+      <input type="search" id="cari" placeholder="Cari tim atau desa" aria-label="Cari tim">
+      <select id="f-prov" aria-label="Saring provinsi"><option value="">Semua provinsi</option></select>
+    </div>
+    <div class="tabel-bungkus"><table>
+      <thead><tr><th>Kode</th><th>Tim</th><th>Desa</th><th>Kabupaten</th><th>Provinsi</th><th>Status</th><th>Daftar</th></tr></thead>
+      <tbody id="baris"><tr><td colspan="7">Memuat...</td></tr></tbody>
+    </table></div>
+    <div class="halaman-nomor">
+      <span id="info"></span>
+      <span class="tombol-baris"><button class="btn btn-garis-gelap btn-kecil" id="prev">Sebelumnya</button><button class="btn btn-garis-gelap btn-kecil" id="next">Berikutnya</button></span>
+    </div>
+  </div>
+</main>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script src="js/config.js"></script>
+<script src="js/db.js"></script>
+<script src="js/common.js"></script>
+<script src="js/rekap.js"></script>
+</body>
+</html>

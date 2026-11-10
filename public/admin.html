@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Admin | TEDNas 2027</title>
+<link rel="icon" href="favicon.ico" sizes="48x48">
+<link rel="icon" type="image/png" sizes="192x192" href="img/ikon-192.png">
+<link rel="apple-touch-icon" href="img/ikon-180.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=League+Gothic&family=Montserrat:wght@500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div class="halaman-kepala"><div class="isi"><h1>PANEL ADMIN</h1></div></div>
+<main class="halaman">
+  <form class="kartu masuk-kotak" id="masuk" hidden>
+    <h2>Masuk Admin</h2>
+    <label class="isian">Nama pengguna<input type="text" id="u" autocomplete="username"></label>
+    <label class="isian">Kata sandi<input type="password" id="p" autocomplete="current-password"></label>
+    <p class="salah" id="masuk-salah" role="alert" hidden></p>
+    <button class="btn" style="width:100%">Masuk</button>
+  </form>
+
+  <div id="panel" hidden>
+    <div class="tab" role="tablist">
+      <button role="tab" data-tab="tim" aria-selected="true">Tim</button>
+      <button role="tab" data-tab="match" aria-selected="false">Pertandingan</button>
+      <button role="tab" data-tab="galeri" aria-selected="false">Galeri</button>
+      <button role="tab" data-tab="atur" aria-selected="false">Pengaturan</button>
+      <button id="keluar" style="margin-left:auto">Keluar</button>
+    </div>
+
+    <section data-isi="tim">
+      <div class="ringkas" id="adm-ringkas"></div>
+      <div class="kartu">
+        <div class="saring">
+          <input type="search" id="t-cari" placeholder="Cari tim, desa, kabupaten, atau kode" aria-label="Cari tim">
+          <select id="t-prov" aria-label="Saring provinsi"><option value="">Semua provinsi</option></select>
+          <select id="t-status" aria-label="Saring status"><option value="">Semua status</option><option value="menunggu">Menunggu</option><option value="terverifikasi">Terverifikasi</option></select>
+          <button class="btn btn-garis-gelap btn-kecil" id="t-ekspor">Unduh CSV</button>
+          <button class="btn btn-garis-gelap btn-kecil" id="t-zip">Unduh Berkas (ZIP)</button>
+        </div>
+        <p class="bantu" style="margin:-4px 0 12px">Unduh Berkas mengambil semua berkas tim <b>terverifikasi</b> (mengikuti saringan provinsi), satu folder per tim. Tiap ZIP berisi maksimal 40 tim; kalau lebih, browser akan mengunduh beberapa bagian.</p>
+        <div class="tabel-bungkus"><table>
+          <thead><tr><th>Kode</th><th>Tim & Kapten</th><th>WhatsApp</th><th>Asal</th><th>Pemain & Berkas</th><th>Status</th><th>Aksi</th></tr></thead>
+          <tbody id="t-baris"></tbody>
+        </table></div>
+        <div class="halaman-nomor">
+          <span id="t-info"></span>
+          <span class="tombol-baris"><button class="btn btn-garis-gelap btn-kecil" id="t-prev">Sebelumnya</button><button class="btn btn-garis-gelap btn-kecil" id="t-next">Berikutnya</button></span>
+        </div>
+      </div>
+    </section>
+
+    <section data-isi="match" hidden>
+      <div class="kartu">
+        <h2>Buat ronde pertandingan</h2>
+        <p class="bantu" style="margin-bottom:12px">Sistem mengundi tim secara acak. Ronde pertama memakai tim terverifikasi, ronde berikutnya memakai pemenang ronde sebelumnya. Jumlah tim ganjil berarti satu tim lolos tanpa lawan. Kualifikasi BO1, fase nasional BO3, final BO5.</p>
+        <div class="saring">
+          <select id="m-fase" aria-label="Fase"><option value="provinsi">Kualifikasi Provinsi</option><option value="nasional">Fase Nasional</option></select>
+          <select id="m-prov" aria-label="Provinsi"><option value="">Pilih provinsi</option></select>
+          <button class="btn btn-kecil" id="m-buat">Buat Ronde Berikutnya</button>
+        </div>
+      </div>
+      <div id="m-daftar"></div>
+    </section>
+
+    <section data-isi="galeri" hidden>
+      <div class="kartu">
+        <h2>Tambah foto atau video</h2>
+        <label class="isian">Judul (opsional)<input type="text" id="g-judul" maxlength="120"></label>
+        <label class="jatuhan"><input type="file" id="g-berkas" accept="image/jpeg,image/png,image/webp,video/mp4,video/webm,video/quicktime" multiple>
+          Pilih foto atau video<small>JPG, PNG, WEBP, MP4, WEBM, MOV. Maksimal 50 MB per berkas.</small></label>
+        <p class="bantu" id="g-status"></p>
+        <label class="isian" style="margin-top:16px">Atau tempel tautan YouTube/Instagram
+          <input type="url" id="g-tautan" placeholder="https://..."></label>
+        <button class="btn btn-kecil" id="g-tambah">Tambah Tautan</button>
+      </div>
+      <div class="foto-grid" id="g-daftar"></div>
+    </section>
+
+    <section data-isi="atur" hidden>
+      <div class="kartu">
+        <h2>Pendaftaran</h2>
+        <p id="a-status"></p>
+        <button class="btn" id="a-tukar"></button>
+        <h2 style="margin-top:28px">Jadwal buka</h2>
+        <p class="bantu" style="margin-bottom:12px">Sebelum waktu ini, formulir menampilkan hitung mundur dan database menolak pendaftaran, walau status di atas DIBUKA. Kosongkan untuk tanpa jadwal.</p>
+        <p id="a-jadwal-status"></p>
+        <div class="saring">
+          <input type="datetime-local" id="a-jadwal" aria-label="Jadwal buka (WIB)">
+          <button class="btn btn-kecil" id="a-jadwal-simpan">Simpan Jadwal</button>
+          <button class="btn btn-garis-gelap btn-kecil" id="a-jadwal-hapus">Hapus Jadwal</button>
+        </div>
+      </div>
+    </section>
+  </div>
+</main>
+
+<dialog id="d-hapus">
+  <h3>Hapus tim ini?</h3>
+  <p id="d-hapus-teks"></p>
+  <div class="dialog-aksi">
+    <button class="btn btn-garis-gelap btn-kecil" data-batal>Batal</button>
+    <button class="btn btn-bahaya-isi btn-kecil" id="d-hapus-ya">Ya, Hapus Permanen</button>
+  </div>
+</dialog>
+
+<dialog id="d-pemain">
+  <h3 id="d-pemain-judul"></h3>
+  <div id="d-pemain-isi"></div>
+  <div class="dialog-aksi"><button class="btn btn-garis-gelap btn-kecil" id="d-pemain-zip">Unduh ZIP Tim Ini</button><button class="btn btn-garis-gelap btn-kecil" data-batal>Tutup</button></div>
+</dialog>
+
+<dialog id="d-match">
+  <h3>Ubah pertandingan</h3>
+  <div class="peringatan" id="dm-peringatan" hidden>Ronde berikutnya sudah dibuat. Hasil tidak bisa diubah sebelum ronde berikutnya dihapus.</div>
+  <label class="isian">Jadwal (WIB)<input type="datetime-local" id="dm-jadwal"></label>
+  <div class="skor-baris">
+    <label class="isian"><span id="dm-a"></span><input type="number" id="dm-sa" min="0" max="5"></label>
+    <label class="isian"><span id="dm-b"></span><input type="number" id="dm-sb" min="0" max="5"></label>
+  </div>
+  <p class="bantu" id="dm-bantu">Kosongkan skor bila belum bertanding. Skor tertinggi otomatis menjadi pemenang.</p>
+  <label class="isian">Pemenang (bila lawan dihapus atau walk over)
+    <select id="dm-menang"></select></label>
+  <label class="isian">Tautan siaran (opsional)<input type="url" id="dm-live" placeholder="https://..."></label>
+  <p class="salah" id="dm-salah" role="alert" hidden></p>
+  <div class="dialog-aksi">
+    <button class="btn btn-garis-gelap btn-kecil" data-batal>Batal</button>
+    <button class="btn btn-kecil" id="dm-simpan">Simpan</button>
+  </div>
+</dialog>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script src="js/config.js"></script>
+<script src="js/db.js"></script>
+<script src="js/common.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="js/pertandingan.js"></script>
+<script src="js/admin.js"></script>
+</body>
+</html>

@@ -1,0 +1,56 @@
+{
+  "cleanUrls": true,
+  "crons": [
+    {
+      "path": "/api/keepalive",
+      "schedule": "0 3 * * *"
+    }
+  ],
+  "redirects": [
+    { "source": "/((?!api/).*)", "has": [{ "type": "host", "value": "tednas.vercel.app" }], "destination": "https://esportsdesa.id/$1", "permanent": true },
+    { "source": "/(.*)", "has": [{ "type": "host", "value": "www.esportsdesa.id" }], "destination": "https://esportsdesa.id/$1", "permanent": true },
+    { "source": "/(.*)", "has": [{ "type": "host", "value": "tednas.esportsdesa.id" }], "destination": "https://esportsdesa.id/$1", "permanent": true }
+  ],
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        {
+          "key": "X-Content-Type-Options",
+          "value": "nosniff"
+        },
+        {
+          "key": "Referrer-Policy",
+          "value": "strict-origin-when-cross-origin"
+        }
+      ]
+    },
+    {
+      "source": "/(.*)\\.(html|js|css)",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-cache, must-revalidate"
+        }
+      ]
+    },
+    {
+      "source": "/data/(.*)",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=86400"
+        }
+      ]
+    },
+    {
+      "source": "/img/(.*)",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=604800"
+        }
+      ]
+    }
+  ]
+}

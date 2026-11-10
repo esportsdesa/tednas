@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Daftar Tim | TEDNas 2027</title>
+<link rel="icon" href="favicon.ico" sizes="48x48">
+<link rel="icon" type="image/png" sizes="192x192" href="img/ikon-192.png">
+<link rel="apple-touch-icon" href="img/ikon-180.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=League+Gothic&family=Montserrat:wght@500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div class="halaman-kepala"><div class="isi">
+  <h1>DAFTARKAN TIM DESAMU</h1>
+  <p>Siapkan nama semua pemain, nomor WA kapten, kartu identitas, screenshot profil Mobile Legends, dan screenshot bukti follow Instagram @esportsdesa.official dan @ditjen_ppdt tiap pemain, serta surat izin untuk pemain di bawah 17 tahun.</p>
+</div></div>
+
+<main class="halaman">
+  <div class="form-sempit">
+    <div class="tutup-box" id="belum-buka" hidden>Pendaftaran dibuka <span id="bb-waktu"></span>.
+      <span class="bb-sisa" id="bb-sisa"></span>
+      <small>Halaman ini otomatis terbuka saat waktunya tiba. Sambil menunggu, siapkan dulu berkasnya: kartu identitas, screenshot profil ML, dan bukti follow Instagram tiap pemain. Lihat <a href="peraturan.html">Peraturan</a>.</small></div>
+    <div class="tutup-box" id="tutup" hidden>Pendaftaran sedang tutup. Kabar terbarunya ada di Instagram @esportsdesa.official.</div>
+
+    <form id="form" novalidate hidden>
+      <ol class="langkah" id="langkah" aria-hidden="true"><li class="aktif"></li><li></li><li></li><li></li><li></li></ol>
+      <p class="langkah-teks" id="langkah-teks">Langkah 1 dari 5</p>
+
+      <section data-langkah="0">
+        <h2>Baca peraturannya dulu</h2>
+        <div class="peraturan" id="peraturan-form"></div>
+        <label class="setuju setuju-aturan"><input type="checkbox" id="setuju-aturan">
+          <span>Saya sudah membaca peraturan ini, dan seluruh anggota tim saya bersedia mematuhinya.</span></label>
+      </section>
+
+      <section data-langkah="1" hidden>
+        <h2>Kamu mewakili desa mana?</h2>
+        <p class="bantu lead">Satu desa boleh mengirim lebih dari satu tim.</p>
+        <label class="isian">Provinsi
+          <select id="prov"><option value="">Memuat...</option></select></label>
+        <label class="isian">Kabupaten
+          <select id="kab" disabled><option value="">Pilih provinsi dulu</option></select></label>
+        <div class="isian">
+          <label for="cari-desa">Desa</label>
+          <div id="desa-cari">
+            <input type="text" id="cari-desa" placeholder="Pilih kabupaten dulu" disabled autocomplete="off" role="combobox" aria-expanded="false" aria-controls="desa-daftar" aria-autocomplete="list">
+            <div class="desa-daftar" id="desa-daftar" role="listbox" aria-label="Daftar desa" hidden></div>
+          </div>
+          <div class="desa-terpilih" id="desa-terpilih" hidden>
+            <div><b id="desa-nama"></b><small id="desa-kec"></small></div>
+            <button type="button" class="tautan" id="desa-ganti">Ganti</button>
+          </div>
+        </div>
+      </section>
+
+      <section data-langkah="2" hidden>
+        <h2>Siapa timnya?</h2>
+        <label class="isian">Nama tim
+          <input type="text" id="nama-tim" maxlength="60" autocomplete="off">
+          <small>Cantumkan nama desa, bebas dari unsur SARA, pornografi, dan politik praktis. Contoh: Mangliawan Esports.</small></label>
+        <label class="isian">Nama pemain 1 (kapten)
+          <input type="text" id="pemain-1" maxlength="80" autocomplete="off"></label>
+        <label class="isian">Nama pemain 2
+          <input type="text" id="pemain-2" maxlength="80" autocomplete="off"></label>
+        <label class="isian">Nama pemain 3
+          <input type="text" id="pemain-3" maxlength="80" autocomplete="off"></label>
+        <label class="isian">Nama pemain 4
+          <input type="text" id="pemain-4" maxlength="80" autocomplete="off"></label>
+        <label class="isian">Nama pemain 5
+          <input type="text" id="pemain-5" maxlength="80" autocomplete="off"></label>
+        <label class="isian">Nama pemain 6 (cadangan)
+          <input type="text" id="pemain-6" maxlength="80" autocomplete="off">
+          <small>Boleh dikosongkan kalau tidak ada cadangan.</small></label>
+        <label class="isian">No. HP (WhatsApp) kapten
+          <input type="tel" id="wa" inputmode="tel" placeholder="08xxxxxxxxxx" autocomplete="tel" maxlength="20">
+          <small>Jadwal dan lawan dikabari lewat nomor ini. Tidak tampil di website.</small></label>
+      </section>
+
+      <section data-langkah="3" hidden>
+        <h2>Tinggal berkasnya</h2>
+        <p class="bantu lead"><b>Semua pemain wajib mengunggah, bukan cuma kapten.</b> Tiap pemain butuh kartu identitas, screenshot profil Mobile Legends, dan screenshot bukti follow <a href="https://www.instagram.com/esportsdesa.official/" target="_blank" rel="noopener">@esportsdesa.official</a> serta <a href="https://www.instagram.com/ditjen_ppdt/" target="_blank" rel="noopener">@ditjen_ppdt</a> (halaman profilnya yang memperlihatkan tombol <i>Following</i>/<i>Mengikuti</i>). Pemain di bawah 17 tahun juga butuh surat izin orang tua/wali.</p>
+        <div id="pemain-berkas"></div>
+        <p class="bantu">Berkas ini hanya dibuka panitia untuk verifikasi, tidak tampil di website. Foto otomatis diperkecil supaya hemat kuota.</p>
+      </section>
+
+      <section data-langkah="4" hidden>
+        <h2>Sudah benar semua?</h2>
+        <dl class="ulasan" id="ulasan"></dl>
+        <label class="setuju"><input type="checkbox" id="setuju">
+          <span>Data ini benar, semua pemain setuju data dan berkasnya dipakai panitia TEDNas untuk verifikasi, dan pemain di bawah 17 tahun sudah diizinkan orang tua/wali.</span></label>
+        <div class="captcha" id="captcha"></div>
+      </section>
+
+      <p class="salah" id="salah" role="alert" hidden></p>
+      <div class="navi-form">
+        <button type="button" class="tautan" id="kembali" hidden>Kembali</button>
+        <button type="button" class="btn btn-emas" id="lanjut" style="margin-left:auto">Lanjut</button>
+      </div>
+    </form>
+
+    <div class="sukses" id="sukses" hidden>
+      <img src="img/logo-esports.png" alt="">
+      <h2>Timmu sudah masuk!</h2>
+      <p>Simpan kode ini ya:</p>
+      <div class="kode-bukti" id="kode"></div>
+      <p id="sukses-teks"></p>
+      <p class="bantu">Panitia akan cek berkasnya dulu, lalu menghubungi kapten lewat WhatsApp.</p>
+      <div class="tombol-baris" style="justify-content:center;margin-top:18px">
+        <a class="btn btn-emas" href="rekap.html">Lihat Rekap Tim</a>
+        <a class="tautan" href="index.html" style="align-self:center">Ke Beranda</a>
+      </div>
+    </div>
+  </div>
+</main>
+
+<script src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit" async defer></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script src="js/config.js"></script>
+<script src="js/db.js"></script>
+<script src="js/common.js"></script>
+<script src="js/daftar.js"></script>
+</body>
+</html>

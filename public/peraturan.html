@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Peraturan | TEDNas 2027</title>
+<link rel="icon" href="favicon.ico" sizes="48x48">
+<link rel="icon" type="image/png" sizes="192x192" href="img/ikon-192.png">
+<link rel="apple-touch-icon" href="img/ikon-180.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=League+Gothic&family=Montserrat:wght@500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div class="halaman-kepala"><div class="isi">
+  <h1>PERATURAN</h1>
+  <p>Baca dulu sebelum mendaftarkan tim.</p>
+</div></div>
+<main class="halaman">
+  <div class="form-sempit">
+    <div class="peraturan" id="peraturan-isi"></div>
+    <p style="margin-top:26px"><a class="btn btn-emas" href="daftar.html">Daftarkan Tim Desamu</a></p>
+  </div>
+</main>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script src="js/config.js"></script>
+<script src="js/db.js"></script>
+<script src="js/common.js"></script>
+<script>document.getElementById('peraturan-isi').innerHTML = U.peraturanHtml();</script>
+</body>
+</html>
