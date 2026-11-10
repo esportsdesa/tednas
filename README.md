@@ -1,7 +1,8 @@
 # TEDNas
 
 Website Turnamen Esports Desa Nasional 2027, Ditjen Percepatan Pembangunan Daerah Tertinggal.
-Online di https://tednas.vercel.app (Vercel: esportsdesa-1941, Supabase: dlznnpmzccndjqxxhnio).
+Online di https://esportsdesa.id (Vercel: esportsdesa-1941, Supabase: dlznnpmzccndjqxxhnio).
+Alamat lama tednas.vercel.app dialihkan otomatis ke esportsdesa.id.
 Statis (`public/`) + Supabase + Vercel, tanpa proses build.
 
 ## Menyambungkan ke Supabase
@@ -15,18 +16,27 @@ Statis (`public/`) + Supabase + Vercel, tanpa proses build.
 
 ## Captcha (Cloudflare Turnstile)
 
-Buat widget untuk hostname `tednas.vercel.app`. Site Key diisi di `public/js/config.js`. Secret Key dijalankan di SQL Editor:
+Buat widget untuk hostname `esportsdesa.id` dan `tednas.vercel.app`. Site Key diisi di `public/js/config.js`. Secret Key dijalankan di SQL Editor:
 `insert into public.tednas_rahasia (id, turnstile_secret) values (1, 'SECRET_KEY') on conflict (id) do update set turnstile_secret = excluded.turnstile_secret;`
 
 Tanpa keduanya, formulir tampil tertutup dan database menolak pendaftaran.
 
 Masuk di `/admin` dengan nama pengguna `admin`. Selama `config.js` masih `GANTI_...`, situs berjalan mode lokal.
 
-## Deploy ulang
+## Mengubah website
 
-```bash
-npx vercel deploy --prod --yes
-```
+Repository ini tersambung ke Vercel. Setiap perubahan yang di-push ke cabang `main`
+otomatis tayang di https://esportsdesa.id dalam 1–2 menit; cabang lain menjadi pratinjau.
+
+1. Clone repository, ubah berkas di `public/`, cek dengan server lokal
+   (`python3 -m http.server --directory public`).
+2. Commit dan push ke `main`, atau buat pull request supaya dicek dulu.
+3. Perubahan database: tulis berkas `supabase/migration-N-....sql` baru dan minta pemilik
+   proyek Supabase menjalankannya SEBELUM kodenya di-push.
+
+Catatan:
+- Tiap mengubah `public/data/`, naikkan `DATA_VERSI` di `public/js/common.js`.
+- Jangan hapus meta `google-site-verification` di `index.html`.
 
 ## Data wilayah
 
