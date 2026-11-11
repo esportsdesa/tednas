@@ -15,8 +15,14 @@
     FOLLOW_TIDAK_ADA: 'Bukti follow Instagram ada yang gagal tersimpan. Coba unggah lagi.',
     WA_SUDAH_ADA: 'Nomor WA ini sudah dipakai mendaftarkan tim lain.',
     CAPTCHA_GAGAL: 'Captcha-nya gagal atau kedaluwarsa. Coba sekali lagi.',
-    CAPTCHA_BELUM_SIAP: 'Pendaftaran belum bisa diproses. Coba lagi nanti ya.'
+    CAPTCHA_BELUM_SIAP: 'Pendaftaran belum bisa diproses. Coba lagi nanti ya.',
+    DRIVE_SIBUK: 'Server berkas sedang ramai. Tunggu sebentar lalu tekan Kirim lagi ya, berkas yang sudah terunggah tidak diulang.',
+    DRIVE_JARINGAN: 'Koneksi terputus saat mengunggah. Tekan Kirim lagi, berkas yang sudah terunggah tidak diulang.',
+    DRIVE_ISI_TIDAK_SAH: 'Ada berkas yang rusak atau bukan foto/PDF asli. Unggah ulang berkas itu.',
+    DRIVE_TERLALU_BESAR: 'Ada berkas yang lebih dari 5 MB. Foto ulang atau perkecil dulu.',
+    DRIVE_JENIS_TIDAK_SAH: 'Ada berkas yang bukan JPG, PNG, atau PDF.'
   };
+  const LABEL_BERKAS = { dok: 'kartu identitas', ml: 'profil ML', ig1: 'bukti follow @esportsdesa.official', ig2: 'bukti follow @ditjen_ppdt', izin: 'surat izin' };
 
   const KUNCI_CAPTCHA = (window.APP_CONFIG || {}).TURNSTILE_SITE_KEY || '';
   const captchaAktif = !DB.lokal && KUNCI_CAPTCHA && !KUNCI_CAPTCHA.startsWith('GANTI');
@@ -283,23 +289,23 @@
     const tombol = $('#lanjut'); tombol.disabled = true;
     galat('');
     try {
-      const aktif = pemainAktif(), total = aktif.reduce((n, i) => n + (pemain[i].bawah17 ? 5 : 4), 0);
-      let selesai = 0;
+      // Dua berkas sekaligus. Yang sudah terunggah (path tersimpan) tidak diulang saat Kirim ditekan lagi.
+      const aktif = pemainAktif(), tugas = [];
       for (const i of aktif) {
-        const p = pemain[i];
-        tombol.textContent = `Mengunggah ${++selesai} dari ${total}...`;
-        if (!p.pathDok) p.pathDok = await DB.unggahDokumen(p.dok);
-        tombol.textContent = `Mengunggah ${++selesai} dari ${total}...`;
-        if (!p.pathMl) p.pathMl = await DB.unggahDokumen(p.ml);
-        tombol.textContent = `Mengunggah ${++selesai} dari ${total}...`;
-        if (!p.pathIg1) p.pathIg1 = await DB.unggahDokumen(p.ig1);
-        tombol.textContent = `Mengunggah ${++selesai} dari ${total}...`;
-        if (!p.pathIg2) p.pathIg2 = await DB.unggahDokumen(p.ig2);
-        if (p.bawah17) {
-          tombol.textContent = `Mengunggah ${++selesai} dari ${total}...`;
-          if (!p.pathIzin) p.pathIzin = await DB.unggahDokumen(p.izin);
-        }
+        for (const f of ['dok', 'ml', 'ig1', 'ig2'].concat(pemain[i].bawah17 ? ['izin'] : [])) tugas.push({ i, f, k: 'path' + f[0].toUpperCase() + f.slice(1) });
       }
+      const antre = tugas.filter((x) => !pemain[x.i][x.k]);
+      let selesai = tugas.length - antre.length, berhenti = false;
+      tombol.textContent = `Mengunggah ${selesai} dari ${tugas.length}...`;
+      const kerja = async () => {
+        while (antre.length && !berhenti) {
+          const x = antre.shift();
+          try { pemain[x.i][x.k] = await DB.unggahDokumen(pemain[x.i][x.f]); }
+          catch (e) { berhenti = true; e.berkas = `${LABEL_BERKAS[x.f]} ${labelPemain(x.i)}`; throw e; }
+          if (!berhenti) tombol.textContent = `Mengunggah ${++selesai} dari ${tugas.length}...`;
+        }
+      };
+      await Promise.all([kerja(), kerja()]);
       tombol.textContent = 'Mengirim...';
       const hasil = await DB.daftar({
         nama_tim: $('#nama-tim').value.trim(), wa: waNormal(),
@@ -314,7 +320,7 @@
       window.scrollTo(0, 0);
     } catch (e) {
       const kunci = Object.keys(PESAN_GALAT).find((k) => String(e.message).includes(k));
-      galat(kunci ? PESAN_GALAT[kunci] : 'Belum terkirim. Cek koneksi lalu coba lagi.');
+      galat((kunci ? PESAN_GALAT[kunci] : 'Belum terkirim. Cek koneksi lalu coba lagi.') + (e.berkas ? ` (berkas: ${e.berkas})` : ''));
       tombol.disabled = false; tombol.textContent = 'Kirim Pendaftaran';
       ulangCaptcha(); // token hanya sah sekali pakai
     } finally { sedangKirim = false; }

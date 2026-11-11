@@ -45,6 +45,8 @@
       async setJadwalBuka(iso) { cek(await sb.from('tednas_pengaturan').update({ buka_mulai: iso, updated_at: new Date().toISOString() }).eq('id', 1)); },
       async statistik() { return cek(await sb.rpc('tednas_statistik')); },
       async unggahDokumen(file) {
+        // Google Drive (public/js/drive.js) bila DRIVE_URL diisi; bucket Supabase hanya cadangan lama.
+        if (window.DRIVE && window.DRIVE.aktif) return window.DRIVE.unggah(file);
         const path = `dokumen/${acakId()}.${ekstensi(file)}`;
         cek(await sb.storage.from(BUCKET_DOK).upload(path, file, { contentType: file.type, upsert: false }));
         return path;
@@ -94,10 +96,17 @@
       },
       async hapusTim(t) {
         cek(await sb.from('tednas_tim').delete().eq('id', t.id));
-        await sb.storage.from(BUCKET_DOK).remove(t.pemain.flatMap((p) => [p.dokumen_path, p.profil_ml_path, p.follow_esports_path, p.follow_ppdt_path, p.izin_path]).filter(Boolean));
+        // Berkas Google Drive tidak dihapus dari sini: Apps Script menandai tim & foldernya "[DIHAPUS]".
+        const lama = t.pemain.flatMap((p) => [p.dokumen_path, p.profil_ml_path, p.follow_esports_path, p.follow_ppdt_path, p.izin_path]).filter((x) => x && !x.startsWith('gdrive/'));
+        if (lama.length) await sb.storage.from(BUCKET_DOK).remove(lama);
       },
       async setStatusTim(id, status) { cek(await sb.from('tednas_tim').update({ status }).eq('id', id)); },
       async urlDokumen(path) {
+        if (String(path).startsWith('gdrive/')) {
+          const { data } = await sb.auth.getSession();
+          if (!data.session) throw new Error('Sesi admin habis. Masuk lagi.');
+          return window.DRIVE.buka(path, data.session.access_token);
+        }
         const r = await sb.storage.from(BUCKET_DOK).createSignedUrl(path, 300);
         if (r.error) throw r.error; return r.data.signedUrl;
       },

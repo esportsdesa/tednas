@@ -14,6 +14,13 @@ Statis (`public/`) + Supabase + Vercel, tanpa proses build.
 4. Authentication > Sign In / Providers: matikan "Allow new users to sign up".
 5. Isi URL dan kunci publik proyek di `public/js/config.js`.
 
+## Penyimpanan Google Drive
+
+Berkas pendaftar diunggah langsung ke Google Drive yanuarardaraja@gmail.com lewat Web App Apps Script
+(`deploy/drive/Code.gs`), tidak ke bucket Supabase (paket gratis hanya 1 GB). Data tim dikirim database ke
+Sheet di Drive yang sama seketika saat mendaftar/berubah. Aktif bila `DRIVE_URL` di `public/js/config.js` diisi.
+Pasang, uji, dan perawatan: [deploy/drive/PASANG.md](deploy/drive/PASANG.md). Migrasi: `supabase/migration-8-drive.sql`.
+
 ## Captcha (Cloudflare Turnstile)
 
 Buat widget untuk hostname `esportsdesa.id` dan `tednas.vercel.app`. Site Key diisi di `public/js/config.js`. Secret Key dijalankan di SQL Editor:
