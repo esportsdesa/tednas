@@ -42,9 +42,14 @@ Rahasia bersama dibuat di laptop: `node deploy/drive/buat-siap.mjs`. Perintah in
 3. **Deploy → New deployment** → ikon gerigi → **Web app** → Execute as: **Me** → Who has access:
    **Anyone** → Deploy → Authorize access → pilih akun → "Google hasn't verified this app" → Advanced →
    Go to … (unsafe) → Allow. Ini skrip milik akun sendiri.
-4. Di editor pilih fungsi **`pasang`** → Run. Execution log menampilkan Folder, Sheet, Web App, dan
-   "Supabase: kunci cocok." Alamat Web App otomatis didaftarkan ke Supabase (`tednas_pengaturan.drive_url`).
-5. Uji Web App asli (lihat di bawah), isi `DRIVE_URL` di `public/js/config.js` dengan alamat `/exec` itu,
+4. Di editor pilih fungsi **`pasang`** → Run. Execution log menampilkan Folder, Sheet, dan
+   "Supabase: kunci cocok."
+5. **Deploy → Manage deployments** → salin **Web app URL** (berakhiran `/exec`; Who has access harus
+   **Anyone**). Daftarkan ke Supabase dengan kunci:
+   `select public.tednas_drive_setel_url('<isi .siap/rahasia.txt>', '<Web app URL>');`
+   Skrip TIDAK mendaftarkan alamatnya sendiri: `ScriptApp.getService().getUrl()` pernah memberi alamat
+   `/exec` yang 404 bagi publik (12 Nov 2026).
+6. Uji Web App asli (lihat di bawah), isi `DRIVE_URL` di `public/js/config.js` dengan alamat yang sama,
    lalu push ke `main`.
 
 ### Uji setelah deploy

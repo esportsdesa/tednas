@@ -30,7 +30,7 @@ function unggahPemain(awal, n = 5) {
 await uji("pasang sebelum deploy: folder, Sheet, pemicu 10 menit, kunci dicek ke Supabase", () => {
   gs.pasang();
   assert.equal(pemicu.length, 1); assert.equal(pemicu[0].m, 10);
-  assert.ok(log.some((l) => l.includes("BELUM DI-DEPLOY")));
+  assert.ok(log.some((l) => l.includes("Manage deployments")));
   assert.ok(log.some((l) => l === "Supabase: kunci cocok."));
   const root = folderBernama("TEDNas 2027 — Data Pendaftar");
   assert.ok(root && root._induk === ROOT_DRIVE.getId());
@@ -201,19 +201,14 @@ await uji("unggahan yatim > 7 hari dibuang; yang dipakai pendaftaran tetap", () 
   assert.ok(masih.every((f) => !f.isTrashed()), "berkas terdaftar tidak dibuang");
 });
 
-await uji("setelah deploy: alamat Web App didaftarkan ke Supabase sekali saja", () => {
-  S.urlLayanan = "https://script.google.com/macros/s/AKfycbTEDNASuji0123456789abcdefghij/dev";
-  gs.rapikan();
-  assert.equal(db.url, null, "alamat /dev tidak didaftarkan");
+await uji("skrip tidak pernah mendaftarkan alamatnya sendiri (getUrl Apps Script tak bisa dipercaya)", () => {
   S.urlLayanan = URL_EXEC;
   gs.rapikan();
-  assert.equal(db.url, URL_EXEC);
-  db.url = "diubah-orang";
-  gs.rapikan();
-  assert.equal(db.url, "diubah-orang", "tidak didaftarkan ulang bila alamatnya sama");
+  assert.equal(db.url, null);
   log.length = 0;
   gs.pasang();
-  assert.ok(log.some((l) => l === `Web App: ${URL_EXEC}`));
+  assert.equal(db.url, null);
+  assert.ok(log.some((l) => l.includes("Manage deployments")));
   assert.equal(pemicu.length, 1, "pasang ulang tidak menggandakan pemicu");
 });
 

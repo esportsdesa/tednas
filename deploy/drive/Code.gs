@@ -22,7 +22,7 @@
  * Panduan pasang: deploy/drive/PASANG.md di repo esportsdesa/tednas.
  */
 
-var VERSI = "2026-11-11";
+var VERSI = "2026-11-12";
 var KUNCI = "__KUNCI__"; // = tednas_rahasia.drive_rahasia di Supabase. RAHASIA: jangan dibagikan.
 var SUPABASE_URL = "https://dlznnpmzccndjqxxhnio.supabase.co";
 var SUPABASE_KUNCI_PUBLIK = "sb_publishable_jBDfxJAsqsdLlKD3eK_TVA_9l4voeNS"; // sama dengan public/js/config.js
@@ -57,7 +57,7 @@ var STATUS = { menunggu: "Menunggu verifikasi", terverifikasi: "Terverifikasi" }
 
 /* ── Yang dijalankan orang ────────────────────────────────────────────── */
 
-/** Sekali, SETELAH Deploy → Web app: folder & Sheet, pemicu berkala, daftarkan alamat Web App ke Supabase. */
+/** Sekali: folder & Sheet, pemicu berkala, cek kunci ke Supabase. */
 function pasang() {
   lepas();
   ScriptApp.newTrigger("rapikan").timeBased().everyMinutes(MENIT_PEMICU).create();
@@ -65,8 +65,8 @@ function pasang() {
   Logger.log("Folder : " + induk.folder.getUrl());
   Logger.log("Sheet  : " + induk.ss.getUrl());
   if (induk.gagalBagikan.length) Logger.log("GAGAL membagikan ke: " + induk.gagalBagikan.join(" | "));
-  var url = alamatWebApp();
-  Logger.log("Web App: " + (url || "BELUM DI-DEPLOY — Deploy → New deployment → Web app (Execute as: Me, Who has access: Anyone), lalu jalankan pasang lagi."));
+  // ScriptApp.getService().getUrl() TIDAK bisa dipercaya (12 Nov 2026: memberi alamat /exec yang 404 untuk publik).
+  Logger.log("Web App: salin 'Web app URL' (berakhiran /exec) dari Deploy → Manage deployments; Who has access harus 'Anyone'.");
   try {
     rpc("tednas_drive_antre", { p_kunci: KUNCI, p_jenis: "sheet", p_batas: 1 });
     Logger.log("Supabase: kunci cocok.");
@@ -247,7 +247,6 @@ function rapikan() {
   var habis = function () { return Date.now() - mulai > BATAS_MS; };
   var hasil = { sheet: 0, rapi: 0, hapus: 0, buang: 0, galat: [] };
   try {
-    try { daftarkanAlamat(); } catch (err) { hasil.galat.push("alamat: " + pesanGalat(err)); }
     // 1. Kabar yang gagal/terlambat dari database (drive_tersalin < drive_versi) + antrean hapus.
     var a = rpc("tednas_drive_antre", { p_kunci: KUNCI, p_jenis: "sheet", p_batas: 50 });
     (a.hapus || []).forEach(function (h) {
@@ -358,24 +357,8 @@ function rpc(nama, isi) {
   return teks ? JSON.parse(teks) : null;
 }
 
-/** Alamat /exec Web App ini, atau "" bila belum di-deploy. */
-function alamatWebApp() {
-  try {
-    var u = ScriptApp.getService().getUrl() || "";
-    return /^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec$/.test(u) ? u : "";
-  } catch (err) {
-    return "";
-  }
-}
-
-/** Database perlu tahu alamat Web App untuk mengirim kabar; didaftarkan ulang bila berubah. */
-function daftarkanAlamat() {
-  var u = alamatWebApp();
-  var p = PropertiesService.getScriptProperties();
-  if (!u || p.getProperty("ALAMAT_TERDAFTAR") === u) return;
-  rpc("tednas_drive_setel_url", { p_kunci: KUNCI, p_url: u });
-  p.setProperty("ALAMAT_TERDAFTAR", u);
-}
+/* Alamat Web App didaftarkan ke Supabase lewat tednas_drive_setel_url (oleh pemasang, dengan kunci) —
+   bukan oleh skrip ini: getUrl() Apps Script bisa memberi alamat yang tidak terbuka untuk publik. */
 
 /* ── Folder & Sheet ───────────────────────────────────────────────────── */
 
