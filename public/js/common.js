@@ -65,7 +65,9 @@
       'Pelanggaran berupa pemalsuan data, ketidaksesuaian domisili, joki, cheat, dan pengaturan skor dapat dikenai diskualifikasi.',
       'Panitia berhak melakukan verifikasi dan membatalkan kepesertaan apabila ditemukan pelanggaran.']]
   ];
-  U.peraturanHtml = () => U.PERATURAN.map(([j, isi]) => `<h3>${U.esc(j)}</h3><ul>${isi.map((x) => `<li>${U.esc(x)}</li>`).join('')}</ul>`).join('');
+  U.unduhIzin = '<a href="unduhan/surat-izin-orang-tua.pdf" download>PDF untuk dicetak</a> · <a href="unduhan/surat-izin-orang-tua.docx" download>Word untuk diisi</a> · <a href="unduhan/contoh-surat-izin-orang-tua.pdf" target="_blank" rel="noopener">lihat contoh</a>';
+  U.peraturanHtml = () => U.PERATURAN.map(([j, isi]) => `<h3>${U.esc(j)}</h3><ul>${isi.map((x) => `<li>${U.esc(x)}</li>`).join('')}</ul>`
+    + (j.startsWith('D.') ? `<p class="unduh-izin">Format surat izin orang tua/wali: ${U.unduhIzin}</p>` : '')).join('');
 
   U.pesan = (t, jenis) => {
     let w = U.$('#toasts');

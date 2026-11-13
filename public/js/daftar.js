@@ -253,6 +253,7 @@
         </div>
         <label class="centang-kecil"><input type="checkbox" data-bawah ${p.bawah17 ? 'checked' : ''}>Pemain ini di bawah 17 tahun per 15 Januari 2027</label>
         <label class="jatuhan" data-izin ${p.bawah17 ? '' : 'hidden'}><input type="file" data-file="izin" accept="application/pdf,image/jpeg,image/png">Unggah surat izin orang tua/wali<small>Foto atau PDF</small><span data-status="izin">${statusBerkas(p.izin)}</span></label>
+        <p class="bantu" data-izin-format ${p.bawah17 ? '' : 'hidden'}>Belum punya suratnya? Unduh formatnya: ${U.unduhIzin}</p>
       </fieldset>`;
     }).join('');
   }
@@ -261,7 +262,7 @@
     const blok = e.target.closest('.blok-pemain'); if (!blok) return;
     const i = Number(blok.dataset.i), p = pemain[i];
     if (e.target.matches('[data-jenis]')) { p.jenis = e.target.value; return; }
-    if (e.target.matches('[data-bawah]')) { p.bawah17 = e.target.checked; $('[data-izin]', blok).hidden = !p.bawah17; return; }
+    if (e.target.matches('[data-bawah]')) { p.bawah17 = e.target.checked; $('[data-izin]', blok).hidden = $('[data-izin-format]', blok).hidden = !p.bawah17; return; }
     const jenis = e.target.dataset.file, f = e.target.files[0];
     if (!jenis || !f) return;
     const bolehPdf = jenis === 'dok' || jenis === 'izin';
