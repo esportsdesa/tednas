@@ -63,7 +63,8 @@ Rahasia bersama dibuat di laptop: `node deploy/drive/buat-siap.mjs`. Perintah in
 
 ## Perawatan
 
-- **Memperbarui skrip:** `node deploy/drive/buat-siap.mjs`, tempel ulang `.siap/Code.gs`, simpan, lalu
+- **Memperbarui skrip:** `node deploy/drive/buat-siap.mjs` (ikut mengisi `KUNCI_AI` agen AI bila
+  `.siap/rahasia-ai.txt` ada), tempel ulang `.siap/Code.gs`, simpan, lalu
   **Deploy → Manage deployments → edit (pensil) → Version: New version → Deploy**. Alamat `/exec` tetap sama.
 - **Mengganti kunci:** hapus `.siap/rahasia.txt`, jalankan `buat-siap.mjs`, jalankan ulang
   `.siap/supabase.sql`, lalu tempel ulang dan deploy ulang Code.gs.

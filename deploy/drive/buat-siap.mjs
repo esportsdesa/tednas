@@ -3,6 +3,7 @@
  *   .siap/rahasia.txt   kunci bersama Supabase ↔ Apps Script (dibuat sekali, dipakai ulang)
  *   .siap/supabase.sql  migration-8-drive.sql + pemasangan kunci → tempel di Supabase > SQL Editor
  *   .siap/Code.gs       deploy/drive/Code.gs berkunci → tempel di script.google.com akun pemilik Drive
+ *                       (KUNCI_AI ikut diisi bila .siap/rahasia-ai.txt ada — agen AI, lihat agen-ai/README.md)
  *   node deploy/drive/buat-siap.mjs
  */
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -31,5 +32,8 @@ select (select drive_rahasia is not null from public.tednas_rahasia where id = 1
 `);
 const gs = readFileSync(new URL("deploy/drive/Code.gs", akar), "utf8");
 if (!gs.includes('"__KUNCI__"')) throw new Error("penanda __KUNCI__ hilang dari Code.gs");
-writeFileSync(new URL("Code.gs", siap), gs.replace('"__KUNCI__"', JSON.stringify(kunci)));
+const fAi = new URL("rahasia-ai.txt", siap);
+const kunciAi = existsSync(fAi) ? readFileSync(fAi, "utf8").trim() : null;
+if (kunciAi && !/^[0-9a-f]{64}$/.test(kunciAi)) throw new Error("rahasia-ai.txt rusak");
+writeFileSync(new URL("Code.gs", siap), gs.replace('"__KUNCI__"', JSON.stringify(kunci)).replace('"__KUNCI_AI__"', kunciAi ? JSON.stringify(kunciAi) : '"__KUNCI_AI__"'));
 console.log("Siap: .siap/supabase.sql dan .siap/Code.gs (kunci di .siap/rahasia.txt)");

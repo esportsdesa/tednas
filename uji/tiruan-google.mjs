@@ -11,7 +11,7 @@ import vm from "node:vm";
 
 const AKAR = new URL("..", import.meta.url);
 
-export function buatDunia({ KUNCI = "c3".repeat(32), PERAN = "utama" } = {}) {
+export function buatDunia({ KUNCI = "c3".repeat(32), PERAN = "utama", KUNCI_AI = null } = {}) {
 const KODE_GS = readFileSync(new URL("deploy/drive/Code.gs", AKAR), "utf8");
 const MIGRASI = ["supabase/migration-8-drive.sql", "supabase/migration-9-cermin-drive.sql"].map((f) => readFileSync(new URL(f, AKAR), "utf8")).join("\n");
 const SB = "https://dlznnpmzccndjqxxhnio.supabase.co";
@@ -221,7 +221,8 @@ const google = {
 };
 const gs = vm.createContext({ ...google, Date: TDate });
 assert.ok(KODE_GS.includes('var PERAN = "utama";'), "penanda PERAN hilang dari Code.gs");
-vm.runInContext(KODE_GS.replace('"__KUNCI__"', JSON.stringify(KUNCI)).replace('var PERAN = "utama";', `var PERAN = ${JSON.stringify(PERAN)};`), gs, { filename: "Code.gs" });
+assert.ok(KODE_GS.includes('"__KUNCI_AI__"'), "penanda __KUNCI_AI__ hilang dari Code.gs");
+vm.runInContext(KODE_GS.replace('"__KUNCI__"', JSON.stringify(KUNCI)).replace('"__KUNCI_AI__"', KUNCI_AI ? JSON.stringify(KUNCI_AI) : '"__KUNCI_AI__"').replace('var PERAN = "utama";', `var PERAN = ${JSON.stringify(PERAN)};`), gs, { filename: "Code.gs" });
 const post = (isi) => J(JSON.parse(gs.doPost({ postData: { contents: typeof isi === "string" ? isi : JSON.stringify(isi) } }).getContent()));
 
 

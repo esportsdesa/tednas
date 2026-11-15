@@ -87,13 +87,36 @@
         const r = await sb.from('tednas_admin').select('user_id').eq('user_id', data.session.user.id).maybeSingle();
         return !!(r.data);
       },
+      /* Hasil agen AI (tednas_ai, migrasi 10) ikut dimuat bila tabelnya sudah ada; belum ada = tanpa kolom AI. */
+      aiAda: null,
       async timAdmin(o) {
-        const q = saringTim(sb.from('tednas_tim').select('*,pemain:tednas_pemain(*)', { count: 'exact' }), o)
-          .order('created_at', { ascending: false }).range(o.dari, o.dari + o.jumlah - 1);
-        const r = cek(await q);
+        const ambil = (pakaiAi) => {
+          const ai = pakaiAi ? (o.ai === 'lolos' || o.ai === 'cek' ? ',ai:tednas_ai!inner(*)' : ',ai:tednas_ai(*)') : '';
+          let q = saringTim(sb.from('tednas_tim').select('*,pemain:tednas_pemain(*)' + ai, { count: 'exact' }), o);
+          if (pakaiAi && (o.ai === 'lolos' || o.ai === 'cek')) q = q.eq('ai.akhir', o.ai);
+          if (pakaiAi && o.ai === 'belum') q = q.is('ai', null);
+          return q.order('created_at', { ascending: false }).range(o.dari, o.dari + o.jumlah - 1);
+        };
+        let r = this.aiAda === false ? null : await ambil(true);
+        if (r && r.error && /tednas_ai|relationship/i.test(r.error.message || '')) { this.aiAda = false; r = null; }
+        else if (r && !r.error) this.aiAda = true;
+        r = cek(r || await ambil(false));
         (r.data || []).forEach((t) => t.pemain.sort((a, b) => a.urutan - b.urutan));
         return { baris: r.data || [], total: r.count || 0 };
       },
+      async statistikAi() { return this.aiAda ? cek(await sb.rpc('tednas_ai_statistik')) : null; },
+      async idLolosAi(o) {
+        const semua = [];
+        for (let dari = 0; ; dari += 1000) {
+          let q = sb.from('tednas_tim').select('id,ai:tednas_ai!inner(akhir)').eq('status', 'menunggu').eq('ai.akhir', 'lolos');
+          if (o && o.prov) q = q.eq('prov_kode', o.prov);
+          const b = cek(await q.order('created_at').range(dari, dari + 999));
+          semua.push(...b.map((x) => x.id)); if (b.length < 1000) break;
+        }
+        return semua;
+      },
+      async verifikasiLolos(ids) { return cek(await sb.rpc('tednas_ai_verifikasi_lolos', { p_ids: ids })); },
+      async periksaUlangAi(timId) { cek(await sb.from('tednas_ai').delete().eq('tim_id', timId)); },
       async hapusTim(t) {
         cek(await sb.from('tednas_tim').delete().eq('id', t.id));
         // Berkas Google Drive tidak dihapus dari sini: Apps Script menandai tim & foldernya "[DIHAPUS]".
@@ -201,6 +224,11 @@
       async keluar() { sessionStorage.removeItem('tednas_admin'); },
       async sesiAdmin() { return sessionStorage.getItem('tednas_admin') === '1'; },
       async timAdmin(o) { const a = saring(o); return { baris: a.slice(o.dari, o.dari + o.jumlah), total: a.length }; },
+      aiAda: false,
+      async statistikAi() { return null; },
+      async idLolosAi() { return []; },
+      async verifikasiLolos() { return { diverifikasi: 0 }; },
+      async periksaUlangAi() {},
       async hapusTim(t) {
         tulis('tim', tim().filter((x) => x.id !== t.id));
         tulis('match', match().map((m) => ({ ...m, tim_a: m.tim_a === t.id ? null : m.tim_a, tim_b: m.tim_b === t.id ? null : m.tim_b, pemenang: m.pemenang === t.id ? null : m.pemenang })));

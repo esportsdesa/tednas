@@ -40,12 +40,17 @@
           <input type="search" id="t-cari" placeholder="Cari tim, desa, kabupaten, atau kode" aria-label="Cari tim">
           <select id="t-prov" aria-label="Saring provinsi"><option value="">Semua provinsi</option></select>
           <select id="t-status" aria-label="Saring status"><option value="">Semua status</option><option value="menunggu">Menunggu</option><option value="terverifikasi">Terverifikasi</option></select>
+          <select id="t-ai" aria-label="Saring hasil cek AI" hidden><option value="">Semua hasil AI</option><option value="lolos">Lolos AI</option><option value="cek">Perlu dicek</option><option value="belum">Belum dicek AI</option></select>
           <button class="btn btn-garis-gelap btn-kecil" id="t-ekspor">Unduh CSV</button>
           <button class="btn btn-garis-gelap btn-kecil" id="t-zip">Unduh Berkas (ZIP)</button>
         </div>
+        <div class="ai-bar" id="t-ai-bar" hidden>
+          <p id="t-ai-teks"></p>
+          <button class="btn btn-kecil" id="t-ai-verif" hidden></button>
+        </div>
         <p class="bantu" style="margin:-4px 0 12px">Unduh Berkas mengambil semua berkas tim <b>terverifikasi</b> (mengikuti saringan provinsi), satu folder per tim. Tiap ZIP berisi maksimal 40 tim; kalau lebih, browser akan mengunduh beberapa bagian.</p>
         <div class="tabel-bungkus"><table>
-          <thead><tr><th>Kode</th><th>Tim & Kapten</th><th>WhatsApp</th><th>Asal</th><th>Pemain & Berkas</th><th>Status</th><th>Aksi</th></tr></thead>
+          <thead><tr><th>Kode</th><th>Tim & Kapten</th><th>WhatsApp</th><th>Asal</th><th>Pemain & Berkas</th><th>Status</th><th id="t-kol-ai" hidden>Cek AI</th><th>Aksi</th></tr></thead>
           <tbody id="t-baris"></tbody>
         </table></div>
         <div class="halaman-nomor">
@@ -111,8 +116,19 @@
 
 <dialog id="d-pemain">
   <h3 id="d-pemain-judul"></h3>
+  <div id="d-pemain-ai"></div>
   <div id="d-pemain-isi"></div>
-  <div class="dialog-aksi"><button class="btn btn-garis-gelap btn-kecil" id="d-pemain-zip">Unduh ZIP Tim Ini</button><button class="btn btn-garis-gelap btn-kecil" data-batal>Tutup</button></div>
+  <div class="dialog-aksi"><button class="btn btn-garis-gelap btn-kecil" id="d-pemain-ulang" hidden>Periksa Ulang AI</button><button class="btn btn-garis-gelap btn-kecil" id="d-pemain-zip">Unduh ZIP Tim Ini</button><button class="btn btn-garis-gelap btn-kecil" data-batal>Tutup</button></div>
+</dialog>
+
+<dialog id="d-ai-verif">
+  <h3>Verifikasi tim yang lolos cek AI?</h3>
+  <p id="d-ai-verif-teks"></p>
+  <p class="bantu">AI hanya membaca berkas. Status yang diubah tetap atas nama admin dan bisa dibatalkan per tim seperti biasa.</p>
+  <div class="dialog-aksi">
+    <button class="btn btn-garis-gelap btn-kecil" data-batal>Batal</button>
+    <button class="btn btn-kecil" id="d-ai-verif-ya">Ya, Verifikasi</button>
+  </div>
 </dialog>
 
 <dialog id="d-match">

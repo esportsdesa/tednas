@@ -12,7 +12,7 @@ const URL_EXEC = "https://script.google.com/macros/s/AKfycbTEDNASuji0123456789ab
 let lulus = 0;
 const uji = async (nama, f) => { try { await f(); lulus++; } catch (e) { console.error(`GAGAL: ${nama}\n`, e); process.exit(1); } };
 
-const { S, KUNCI, J, gs, db, benda, hitung, props, cache, pemicu, log, ROOT_DRIVE, folderBernama, anakDari, sahkan, daftarTim, paket, kabar, post, blob, signed } = buatDunia();
+const { S, KUNCI, J, gs, db, benda, hitung, props, cache, pemicu, log, ROOT_DRIVE, folderBernama, anakDari, sahkan, daftarTim, paket, kabar, post, blob, signed } = buatDunia({ KUNCI_AI: "d4".repeat(32) });
 /* ── isi berkas uji ───────────────────────────────────────────────────── */
 const JPG = (n) => Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), Buffer.from(`jpg-${n}`)]);
 const PNG = (n) => Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a]), Buffer.from(`png-${n}`)]);
@@ -188,6 +188,24 @@ await uji("admin membuka berkas: token admin sah, berkas TEDNas saja, hasil di-c
   // Berkas yang masih di Berkas Masuk juga bisa dibuka.
   const baru = unggah(JPG("baru"), "image/jpeg").path.split("~")[0];
   assert.equal(post({ aksi: "berkas", path: baru, token: "token-admin-sah-0123456789" }).ok, true);
+});
+
+await uji("agen AI membaca berkas dengan KUNCI_AI (tanpa login admin); kunci lain & berkas di luar TEDNas ditolak", () => {
+  const path = t1.pemain[1].profil_ml_path, auth = hitung.auth;
+  const r = post({ aksi: "berkas", path, kunci_ai: "d4".repeat(32) });
+  assert.equal(r.ok, true); assert.equal(r.mime, "image/png");
+  assert.ok(Buffer.from(r.data, "base64").equals(isiBerkas.get(path)));
+  assert.equal(hitung.auth, auth, "kunci AI tidak memanggil Supabase Auth");
+  assert.equal(post({ aksi: "berkas", path, kunci_ai: "d5".repeat(32) }).pesan, "BUKAN_ADMIN");
+  assert.equal(post({ aksi: "berkas", path, kunci_ai: KUNCI }).pesan, "BUKAN_ADMIN", "kunci Drive bukan kunci AI");
+  assert.equal(post({ aksi: "berkas", path, kunci_ai: ["d4".repeat(32)] }).pesan, "BUKAN_ADMIN");
+  const lain = ROOT_DRIVE.createFile(blob(signed(JPG("rahasia-ai")), "image/jpeg", "foto-pribadi-2.jpg"));
+  assert.equal(post({ aksi: "berkas", path: `gdrive/${lain.getId()}.jpg`, kunci_ai: "d4".repeat(32) }).pesan, "BUKAN_BERKAS_TEDNAS");
+  // Code.gs tanpa KUNCI_AI terisi (penanda __KUNCI_AI__ dibiarkan) = jalur AI mati.
+  const W2 = buatDunia();
+  W2.gs.pasang();
+  assert.equal(W2.post({ aksi: "berkas", path, kunci_ai: "__KUNCI_AI__" }).pesan, "BUKAN_ADMIN");
+  assert.equal(W2.post({ aksi: "berkas", path, kunci_ai: "d4".repeat(32) }).pesan, "BUKAN_ADMIN");
 });
 
 await uji("unggahan yatim > 7 hari dibuang; yang dipakai pendaftaran tetap", () => {

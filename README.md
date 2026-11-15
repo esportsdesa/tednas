@@ -21,6 +21,14 @@ Berkas pendaftar diunggah langsung ke Google Drive yanuarardaraja@gmail.com lewa
 Sheet di Drive yang sama seketika saat mendaftar/berubah. Aktif bila `DRIVE_URL` di `public/js/config.js` diisi.
 Pasang, uji, dan perawatan: [deploy/drive/PASANG.md](deploy/drive/PASANG.md). Migrasi: `supabase/migration-8-drive.sql` dan `migration-9-cermin-drive.sql`. Salinan penuh juga tercatat di Drive esportsdesa@gmail.com: [deploy/drive/CERMIN.md](deploy/drive/CERMIN.md).
 
+## Cek berkas otomatis (agen AI)
+
+Agen AI di server dapur membaca berkas tiap tim begitu tim mendaftar. Yang dibaca: identitas, umur, domisili,
+surat izin, profil Mobile Legends, bukti follow, dan NIK/ID/berkas ganda. Hasilnya tampil di halaman admin, di
+kolom **Cek AI**. Agen tidak mengubah status. Admin yang menekan Verifikasi, per tim atau sekaligus untuk yang
+lolos AI. Panduan: [agen-ai/README.md](agen-ai/README.md). Migrasi: `supabase/migration-10-ai-periksa.sql`.
+Selama migrasi itu belum dijalankan, halaman admin tetap berjalan seperti biasa tanpa kolom AI.
+
 ## Captcha (Cloudflare Turnstile)
 
 Buat widget untuk hostname `esportsdesa.id` dan `tednas.vercel.app`. Site Key diisi di `public/js/config.js`. Secret Key dijalankan di SQL Editor:

@@ -1,0 +1,20 @@
+# Agen AI pemeriksa berkas TEDNas — unit systemd --user di server dapur.
+# Pasang: .siap/ai.mjs pasang (menyalin agen.mjs, nilai.mjs, berkas env ke ~/tednas-ai lalu menyalakan unit ini).
+[Unit]
+Description=TEDNas: agen AI pemeriksa berkas pendaftar
+After=network-online.target
+
+[Service]
+WorkingDirectory=%h/tednas-ai
+EnvironmentFile=%h/tednas-ai/tednas-ai.env
+ExecStart=/opt/node-jot/bin/node %h/tednas-ai/agen.mjs
+Restart=always
+RestartSec=30
+# Server dapur RAM-nya tipis: agen ringan (±60 MB), dipagari & jadi korban duluan bila memori habis.
+MemoryMax=300M
+MemorySwapMax=0
+OOMScoreAdjust=800
+Nice=10
+
+[Install]
+WantedBy=default.target

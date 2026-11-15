@@ -13,6 +13,7 @@
  *     - aksi "tim" / "hapus": dikirim database (pg_net) SEKETIKA tim mendaftar, berubah, atau dihapus
  *       → baris di Sheet ditulis/ditandai. Wajib membawa KUNCI.
  *     - aksi "berkas": halaman admin membuka berkas; wajib membawa token sesi admin Supabase.
+ *       Agen AI pemeriksa berkas (agen-ai/ di repo) juga boleh, dengan KUNCI_AI — hanya MEMBACA berkas TEDNas.
  *     - aksi "cek": dipakai skrip pemeriksa (berkunci) — folder tim di dalam folder TEDNas akun ini? kode tim di Sheet?
  *     Peran cermin: tidak menerima "unggah"/"berkas"; "tim" = salin berkas tim dari Drive utama + tulis Sheet.
  *     Kabar tim baru juga memindahkan berkas tim itu ke folder timnya dengan nama yang terbaca.
@@ -29,9 +30,10 @@
  * Panduan pasang: deploy/drive/PASANG.md di repo esportsdesa/tednas.
  */
 
-var VERSI = "2026-11-15";
+var VERSI = "2026-11-16";
 var PERAN = "utama"; // "utama" | "cermin"
 var KUNCI = "__KUNCI__"; // utama = tednas_rahasia.drive_rahasia, cermin = .cermin_rahasia. RAHASIA: jangan dibagikan.
+var KUNCI_AI = "__KUNCI_AI__"; // utama saja: = tednas_rahasia.ai_rahasia (agen AI, baca berkas). Biarkan __…__ = mati.
 var SUPABASE_URL = "https://dlznnpmzccndjqxxhnio.supabase.co";
 var SUPABASE_KUNCI_PUBLIK = "sb_publishable_jBDfxJAsqsdLlKD3eK_TVA_9l4voeNS"; // sama dengan public/js/config.js
 
@@ -179,7 +181,7 @@ function jatahUnggah() {
 
 /** Halaman admin membuka berkas: token sesi Supabase harus milik akun di tednas_admin. */
 function lihatBerkas(isi) {
-  if (!adminSah(isi.token)) return { ok: false, pesan: "BUKAN_ADMIN" };
+  if (!kunciAiSah(isi.kunci_ai) && !adminSah(isi.token)) return { ok: false, pesan: "BUKAN_ADMIN" };
   var m = /^gdrive\/([A-Za-z0-9_-]{10,100})\.(pdf|jpg|png)$/.exec(String(isi.path || ""));
   if (!m) return { ok: false, pesan: "PATH_TIDAK_SAH" };
   var f;
@@ -192,6 +194,11 @@ function lihatBerkas(isi) {
   if (!diDalam(f, PropertiesService.getScriptProperties().getProperty("FOLDER"), 4)) return { ok: false, pesan: "BUKAN_BERKAS_TEDNAS" };
   var b = f.getBlob();
   return { ok: true, mime: b.getContentType(), nama: f.getName(), data: Utilities.base64Encode(b.getBytes()) };
+}
+
+/** Agen AI pemeriksa berkas: kunci 64 hex yang sama dengan tednas_rahasia.ai_rahasia. */
+function kunciAiSah(k) {
+  return typeof k === "string" && /^[0-9a-f]{64}$/.test(KUNCI_AI) && k === KUNCI_AI;
 }
 
 function adminSah(token) {
