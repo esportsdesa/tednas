@@ -45,7 +45,7 @@ function buatBerkas(nama, isi, mime, induk) {
   const f = { _jenis: "berkas", _nama: nama, _isi: isi, _mime: mime, _induk: induk, _sampah: false,
     getId: () => id, getName: () => f._nama, setName(x) { hitung.setName++; f._nama = x; return f; },
     getUrl: () => `https://drive.google.com/file/d/${id}/view?usp=drivesdk`, isTrashed: () => f._sampah, setTrashed(x) { f._sampah = x; return f; },
-    moveTo(d) { hitung.moveTo++; f._induk = d.getId(); return f; }, getParents: () => iter(f._induk && benda.has(f._induk) ? [benda.get(f._induk)] : []),
+    moveTo(d) { hitung.moveTo++; f._induk = d.getId(); return f; }, makeCopy: (n, d) => buatBerkas(n, f._isi, f._mime, d.getId()), getParents: () => iter(f._induk && benda.has(f._induk) ? [benda.get(f._induk)] : []),
     getBlob: () => blob(signed(f._isi), f._mime, f._nama) };
   benda.set(id, f);
   return f;
@@ -116,7 +116,7 @@ function rpcTiruan(nama, b) {
   assert.ok(t, `RPC ${nama} tidak ada di migrasi`);
   for (const k of Object.keys(b)) assert.ok(t.some((x) => x.nama === k), `${nama}: parameter ${k} tidak ada di SQL`);
   for (const x of t) if (x.wajib) assert.ok(x.nama in b, `${nama}: parameter wajib ${x.nama} tidak dikirim`);
-  if (b.p_kunci !== KUNCI) return [400, { message: "KUNCI_SALAH" }];
+  if (b.p_kunci !== S.kunciDb) return [400, { message: "KUNCI_SALAH" }];
   const cari = (id) => db.tim.find((x) => x.id === id);
   switch (nama) {
     case "tednas_drive_antre":
@@ -179,7 +179,7 @@ function ambil(url, o = {}) {
 
 /* ── layanan Apps Script lain ─────────────────────────────────────────── */
 const props = new Map(), cache = new Map(), pemicu = [], log = [];
-S.gembokSibuk = false; S.urlLayanan = null;
+S.gembokSibuk = false; S.urlLayanan = null; S.kunciDb = KUNCI; // kunci yang diterima Supabase tiruan
 const google = {
   DriveApp: {
     createFolder: (n) => buatFolder(n, ROOT_DRIVE.getId()),

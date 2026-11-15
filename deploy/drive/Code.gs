@@ -1,5 +1,6 @@
 /**
- * TEDNas 2027 — penyimpanan Google Drive (akun pemilik Drive: yanuarardaraja@gmail.com).
+ * TEDNas 2027 — penyimpanan Google Drive (akun pemilik Drive: esportsdesa@gmail.com sejak 15 Nov 2026;
+ * sebelumnya yanuarardaraja@gmail.com — lihat deploy/drive/PINDAH-AKUN.md).
  *
  * Satu proyek Apps Script, dua peran:
  *  1. WEB APP (Deploy → Web app, Execute as: Me, Who has access: Anyone)
@@ -8,6 +9,8 @@
  *     - aksi "tim" / "hapus": dikirim database (pg_net) SEKETIKA tim mendaftar, berubah, atau dihapus
  *       → baris di Sheet ditulis/ditandai. Wajib membawa KUNCI.
  *     - aksi "berkas": halaman admin membuka berkas; wajib membawa token sesi admin Supabase.
+ *     - aksi "salin" / "cek": dipakai skrip pindah akun (berkunci) — salin berkas dari Drive pemilik lama
+ *       yang dibagikan ke akun ini, dan periksa bahwa semua berkas/folder sudah di dalam folder TEDNas akun ini.
  *     Kabar tim baru juga memindahkan berkas tim itu ke folder timnya dengan nama yang terbaca.
  *  2. PEMICU BERKALA `rapikan` (tiap MENIT_PEMICU menit): menyusulkan kabar & perapian yang gagal
  *     (paling banyak RAPI_PER_PUTARAN tim — jatah pemicu Gmail terbatas) dan membuang unggahan yatim.
@@ -22,7 +25,7 @@
  * Panduan pasang: deploy/drive/PASANG.md di repo esportsdesa/tednas.
  */
 
-var VERSI = "2026-11-12";
+var VERSI = "2026-11-15";
 var KUNCI = "__KUNCI__"; // = tednas_rahasia.drive_rahasia di Supabase. RAHASIA: jangan dibagikan.
 var SUPABASE_URL = "https://dlznnpmzccndjqxxhnio.supabase.co";
 var SUPABASE_KUNCI_PUBLIK = "sb_publishable_jBDfxJAsqsdLlKD3eK_TVA_9l4voeNS"; // sama dengan public/js/config.js
@@ -69,10 +72,13 @@ function pasang() {
   Logger.log("Web App: salin 'Web app URL' (berakhiran /exec) dari Deploy → Manage deployments; Who has access harus 'Anyone'.");
   try {
     rpc("tednas_drive_antre", { p_kunci: KUNCI, p_jenis: "sheet", p_batas: 1 });
-    Logger.log("Supabase: kunci cocok.");
   } catch (err) {
-    Logger.log("Supabase MENOLAK: " + pesanGalat(err) + " — jalankan dulu SQL dari PASANG.md di Supabase.");
+    // Pindah akun: kunci baru baru dipasang di Supabase bersamaan dengan alamat Web App (PINDAH-AKUN.md).
+    Logger.log("Supabase belum menerima kunci skrip ini (" + pesanGalat(err) + "). WAJAR bila sedang pindah akun: " +
+      "deploy Web App lalu kirim 'Web app URL' ke pemasang. Pemasangan baru: jalankan dulu SQL dari PASANG.md.");
+    return;
   }
+  Logger.log("Supabase: kunci cocok.");
   Logger.log("Putaran pertama: " + JSON.stringify(rapikan()));
 }
 
@@ -107,6 +113,8 @@ function doPost(e) {
     if (isi.aksi === "berkas") return jawab(lihatBerkas(isi));
     if (isi.aksi === "tim") return jawab((cekKunci(isi.kunci), kabarTim(isi.tim)));
     if (isi.aksi === "hapus") return jawab((cekKunci(isi.kunci), kabarHapus(isi.kode)));
+    if (isi.aksi === "salin") return jawab((cekKunci(isi.kunci), salinBerkas(isi.path)));
+    if (isi.aksi === "cek") return jawab((cekKunci(isi.kunci), cekMilik(isi)));
     return jawab({ ok: false, pesan: "AKSI_TIDAK_DIKENAL" });
   } catch (err) {
     return jawab({ ok: false, pesan: pesanGalat(err) });
@@ -237,6 +245,50 @@ function kabarHapus(kode) {
   return { ok: true };
 }
 
+/* ── Pindah akun (dipanggil skrip pindah, berkunci) ───────────────────── */
+
+/**
+ * Salin satu berkas dari Drive pemilik lama (foldernya harus dibagikan ke akun ini, minimal Pelihat) ke
+ * "Berkas Masuk/<hari ini>" dengan nama acak — sama seperti unggahan baru, jadi kalau path-nya tidak pernah
+ * dipasang ke database, salinan itu dibuang buangYatim(). Berkas yang sudah di folder TEDNas akun ini
+ * dikembalikan apa adanya (aman diulang).
+ */
+function salinBerkas(path) {
+  var m = /^gdrive\/([A-Za-z0-9_-]{10,100})\.(pdf|jpg|png)$/.exec(String(path || ""));
+  if (!m) return { ok: false, pesan: "PATH_TIDAK_SAH" };
+  var f;
+  try {
+    f = DriveApp.getFileById(m[1]);
+  } catch (err) {
+    return { ok: false, pesan: "BERKAS_TIDAK_TERBUKA" }; // folder lama belum dibagikan ke akun ini
+  }
+  if (diDalam(f, dasar().folder.getId(), 4)) return { ok: true, path: path, sudah: true };
+  var baru = f.makeCopy(Utilities.getUuid() + "." + m[2], folderMasuk(tanggalWib(new Date())));
+  return { ok: true, path: "gdrive/" + baru.getId() + "." + m[2], sudah: false };
+}
+
+/** Periksa: berkas & folder tim ini di dalam folder TEDNas akun ini? + kode tim yang tertulis di Sheet. */
+function cekMilik(isi) {
+  var akar = dasar().folder.getId();
+  var berkas = (isi.berkas || []).slice(0, 60).map(function (path) {
+    var m = /^gdrive\/([A-Za-z0-9_-]{10,100})\.(pdf|jpg|png)$/.exec(String(path || ""));
+    if (!m) return false;
+    try { return diDalam(DriveApp.getFileById(m[1]), akar, 4); } catch (err) { return false; }
+  });
+  var folder = (isi.folder || []).slice(0, 60).map(function (u) {
+    var m = /\/folders\/([A-Za-z0-9_-]{10,100})/.exec(String(u || ""));
+    if (!m) return false;
+    try { return diDalam(DriveApp.getFolderById(m[1]), akar, 3); } catch (err) { return false; }
+  });
+  var hasil = { ok: true, berkas: berkas, folder: folder };
+  if (isi.kode) {
+    var sh = dasar().ss.getSheetByName("Tim");
+    var akhir = sh.getLastRow();
+    hasil.kode = akhir < 2 ? [] : sh.getRange(2, 1, akhir - 1, 1).getValues().map(function (b) { return String(b[0]); });
+  }
+  return hasil;
+}
+
 /* ── Pemicu berkala ───────────────────────────────────────────────────── */
 
 function rapikan() {
@@ -248,7 +300,14 @@ function rapikan() {
   var hasil = { sheet: 0, rapi: 0, hapus: 0, buang: 0, galat: [] };
   try {
     // 1. Kabar yang gagal/terlambat dari database (drive_tersalin < drive_versi) + antrean hapus.
-    var a = rpc("tednas_drive_antre", { p_kunci: KUNCI, p_jenis: "sheet", p_batas: 50 });
+    //    Supabase menolak (mis. kunci belum dipasang saat pindah akun) → putaran ini selesai, tercatat di DETAK.
+    var a;
+    try {
+      a = rpc("tednas_drive_antre", { p_kunci: KUNCI, p_jenis: "sheet", p_batas: 50 });
+    } catch (err) {
+      hasil.galat.push("antre: " + pesanGalat(err));
+      return hasil;
+    }
     (a.hapus || []).forEach(function (h) {
       if (habis()) return;
       try { if (kabarHapus(h.kode).ok) hasil.hapus++; } catch (err) { hasil.galat.push(h.kode + ": " + pesanGalat(err)); }

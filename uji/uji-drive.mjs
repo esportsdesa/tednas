@@ -220,6 +220,80 @@ await uji("tim lama (berkas di bucket Supabase): baris tertulis, berkas tidak di
   assert.equal(anakDari(benda.get(lama.folder.split("/").pop())).length, 0);
 });
 
+await uji("pindah akun: pasang & pemicu tenang selama Supabase belum menerima kunci baru", () => {
+  S.kunciDb = "kunci-lama-di-supabase";
+  log.length = 0;
+  gs.pasang();
+  assert.ok(log.some((l) => l.includes("WAJAR bila sedang pindah akun")), log.join("\n"));
+  assert.ok(!log.some((l) => l.startsWith("Putaran pertama")), "putaran pertama dilewati");
+  assert.equal(pemicu.length, 1);
+  S.jam += 10 * 60_000;
+  const h = J(gs.rapikan());
+  assert.ok(h.galat.some((g) => g.startsWith("antre:") && g.includes("KUNCI_SALAH")), JSON.stringify(h));
+  assert.equal(cache.has("rapikan_jalan"), false);
+  S.kunciDb = KUNCI;
+});
+
+await uji("pindah akun: salin dari Drive lama → Berkas Masuk, aman diulang, cek milik, lalu dirapikan", () => {
+  // Folder akun lama yang dibagikan ke akun ini: di luar folder TEDNas akun ini.
+  const lamaRoot = gs.DriveApp.createFolder("TEDNas 2027 — Data Pendaftar (akun lama)");
+  const lamaTim = lamaRoot.createFolder("TED-00099 — Tim Pindahan");
+  const isiLama = new Map();
+  const berkasLama = (nama, buf, mime) => { const f = lamaTim.createFile(blob(signed(buf), mime, nama)); const p = `gdrive/${f.getId()}.${nama.split(".").pop()}`; isiLama.set(p, buf); return p; };
+  const pindahan = daftarTim("Tim Pindahan", Array.from({ length: 5 }, (_, i) => ({ nama: `Pindah ${i}`,
+    dok: berkasLama(`${i + 1}. Pindah ${i} — KTP.jpg`, JPG(`p${i}d`), "image/jpeg"), ml: berkasLama(`${i + 1}. Pindah ${i} — Profil ML.png`, PNG(`p${i}m`), "image/png"),
+    ig1: berkasLama(`${i + 1}. a.jpg`, JPG(`p${i}a`), "image/jpeg"), ig2: berkasLama(`${i + 1}. b.jpg`, JPG(`p${i}b`), "image/jpeg"),
+    izin: i === 4 ? berkasLama("5. izin.pdf", PDF("p4"), "application/pdf") : null })), { lama: true });
+  pindahan.tersalin = pindahan.versi; pindahan.rapi = 1; pindahan.folder = lamaTim.getUrl(); // tertulis di Sheet akun lama
+  const salin = (path, kunci = KUNCI) => post({ aksi: "salin", kunci, path });
+  const cek = (isi) => post({ aksi: "cek", kunci: KUNCI, ...isi });
+
+  assert.equal(salin(pindahan.pemain[0].dokumen_path, "kunci-salah").pesan, "KUNCI_SALAH");
+  assert.equal(post({ aksi: "salin", path: pindahan.pemain[0].dokumen_path }).pesan, "KUNCI_SALAH");
+  assert.equal(salin("gdrive/../x.jpg").pesan, "PATH_TIDAK_SAH");
+  assert.equal(salin("gdrive/1TiruBelumDibagikan000000.jpg").pesan, "BERKAS_TIDAK_TERBUKA");
+  assert.equal(post({ aksi: "cek", kunci: "x", berkas: [] }).pesan, "KUNCI_SALAH");
+
+  const peta = new Map();
+  for (const p of pindahan.pemain) for (const k of ["dokumen_path", "profil_ml_path", "follow_esports_path", "follow_ppdt_path", "izin_path"]) {
+    if (!p[k]) continue;
+    const r = salin(p[k]);
+    assert.equal(r.ok, true, JSON.stringify(r)); assert.equal(r.sudah, false);
+    assert.notEqual(r.path, p[k]); assert.equal(r.path.split(".").pop(), p[k].split(".").pop());
+    const f = benda.get(r.path.slice(7).split(".")[0]);
+    assert.ok(f._isi.equals(isiLama.get(p[k])), "isi salinan utuh");
+    assert.match(f.getName(), /^[0-9a-f-]{36}\.(jpg|png|pdf)$/, "nama acak seperti unggahan (bisa dibuang bila yatim)");
+    assert.equal(benda.get(benda.get(f._induk)._induk).getName(), "Berkas Masuk");
+    assert.equal(benda.get(p[k].slice(7).split(".")[0])._induk, lamaTim.getId(), "berkas lama tidak disentuh");
+    assert.deepEqual(salin(r.path), { ok: true, path: r.path, sudah: true }, "salin ulang = no-op");
+    peta.set(p[k], r.path);
+  }
+  const lamaPaths = [...peta.keys()], baruPaths = [...peta.values()];
+  let c = cek({ berkas: [...lamaPaths.slice(0, 2), ...baruPaths.slice(0, 2), "gdrive/1TiruTidakAda00000000000.jpg"], folder: [lamaTim.getUrl(), "bukan url"], kode: true });
+  assert.deepEqual(c.berkas, [false, false, true, true, false]);
+  assert.deepEqual(c.folder, [false, false]);
+  assert.ok(!c.kode.includes(pindahan.kode), "belum ada di Sheet akun ini");
+
+  // Skrip pindah mengganti path di database dalam satu pernyataan (versi naik, rapi = 0, folder dikosongkan) → kabar.
+  for (const p of pindahan.pemain) for (const k of Object.keys(p)) if (peta.has(p[k])) p[k] = peta.get(p[k]);
+  pindahan.versi++; pindahan.rapi = 0; pindahan.folder = null;
+  assert.deepEqual(kabar("tim", { tim: paket(pindahan) }), { ok: true, rapi: true });
+  assert.equal(pindahan.tersalin, pindahan.versi);
+  assert.ok(pindahan.folder && pindahan.folder !== lamaTim.getUrl());
+  c = cek({ berkas: baruPaths, folder: [pindahan.folder], kode: true });
+  assert.ok(c.berkas.every(Boolean), JSON.stringify(c.berkas));
+  assert.deepEqual(c.folder, [true]);
+  assert.ok(c.kode.includes(pindahan.kode));
+  assert.equal(benda.get(baruPaths[0].slice(7).split(".")[0]).getName(), "1. Pindah 0 — KTP.jpg");
+  assert.ok(lamaPaths.every((p) => benda.get(p.slice(7).split(".")[0])._induk === lamaTim.getId()), "akun lama tetap utuh (cadangan)");
+  // Salinan yang tak pernah dipasang ke database dibuang seperti unggahan yatim.
+  const sia = salin(lamaPaths[0]).path;
+  S.jam += 8 * 86_400_000;
+  gs.rapikan();
+  assert.equal(benda.get(sia.slice(7).split(".")[0]).isTrashed(), true);
+  assert.equal(benda.get(baruPaths[0].slice(7).split(".")[0]).isTrashed(), false);
+});
+
 await uji("detak tercatat & galat tidak menghentikan putaran", () => {
   const rusak = daftarTim("Berkas Hilang", unggahPemain(40));
   const id = rusak.pemain[0].dokumen_path.slice(7).split(".")[0];

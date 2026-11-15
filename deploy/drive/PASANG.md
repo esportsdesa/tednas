@@ -1,6 +1,7 @@
 # Penyimpanan Google Drive
 
-Data dan berkas pendaftar TEDNas disimpan di Google Drive **yanuarardaraja@gmail.com**:
+Data dan berkas pendaftar TEDNas disimpan di Google Drive **esportsdesa@gmail.com**. Sampai 15 Nov 2026
+masih di yanuarardaraja@gmail.com; lihat [PINDAH-AKUN.md](PINDAH-AKUN.md) dan `supabase/migration-9-pindah-akun-drive.sql`.
 
 ```
 My Drive
@@ -37,7 +38,7 @@ Rahasia bersama dibuat di laptop: `node deploy/drive/buat-siap.mjs`. Perintah in
 1. **Supabase** (akun pemilik proyek `dlznnpmzccndjqxxhnio`): SQL Editor → New query → tempel seluruh
    `.siap/supabase.sql` → Run. Hasil terakhir harus `rahasia_terpasang = true`. Langkah ini aman kapan
    saja, karena selama alamat Web App belum terdaftar database belum mengirim apa pun.
-2. **Google** (login **yanuarardaraja@gmail.com**): buka <https://script.new>, beri nama
+2. **Google** (login akun pemilik Drive, kini **esportsdesa@gmail.com**): buka <https://script.new>, beri nama
    "TEDNas — Penyimpanan Drive", hapus isi editor, tempel seluruh `.siap/Code.gs`, lalu simpan (Ctrl+S).
 3. **Deploy → New deployment** → ikon gerigi → **Web app** → Execute as: **Me** → Who has access:
    **Anyone** → Deploy → Authorize access → pilih akun → "Google hasn't verified this app" → Advanced →

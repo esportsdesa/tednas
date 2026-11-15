@@ -1,6 +1,6 @@
 /**
  * Uji SQL TEDNas di Postgres SUNGGUHAN (container sementara di server jot, dibuang setelahnya):
- * skema-tednas.sql + migration-8-drive.sql di atas tiruan Supabase (uji/sql-tiruan-supabase.sql).
+ * skema-tednas.sql + migration-8-drive.sql + migration-9-pindah-akun-drive.sql di atas tiruan Supabase (uji/sql-tiruan-supabase.sql).
  * Tanda HMAC dibuat dengan crypto Node — sama dengan Utilities.computeHmacSha256Signature di Apps Script —
  * jadi uji ini juga membuktikan pgcrypto menghitung tanda yang sama.
  *   node uji/uji-sql.mjs            (butuh ssh jot + docker postgres:17-alpine di sana)
@@ -16,6 +16,8 @@ const baca = (f) => readFileSync(new URL(f, AKAR), "utf8");
 const RAHASIA = "a1".repeat(32);
 const URL_WA = "https://script.google.com/macros/s/AKfycbUJIuji0123456789abcdefghijklmnop/exec";
 const tanda = (inti) => `${inti}~${createHmac("sha256", RAHASIA).update(inti).digest("hex")}`;
+const RAHASIA2 = "b2".repeat(32); // kunci akun Drive baru (migrasi 9)
+const tanda2 = (inti, k = RAHASIA2) => `${inti}~${createHmac("sha256", k).update(inti).digest("hex")}`;
 const id = (n) => `1AbCdEfGhIjKlMnOpQrStUvWx_${String(n).padStart(4, "0")}`;
 const pemain = (awal, n = 5) => Array.from({ length: n }, (_, i) => ({
   nama: `Pemain ${awal}-${i + 1}`, dokumen_jenis: "KTP",
@@ -202,6 +204,36 @@ do $u$ begin
   assert (select count(*) from net._kirim) = 5, 'tanpa url tidak ada kabar';
   assert (select drive_tersalin < drive_versi from public.tednas_tim where wa_kapten = '6281234567807'), 'tetap antre';
 end $u$;
+
+-- 12. pindah akun Drive (migrasi 9): pintu hanya kunci baru, tanda berkas kunci lama masih diterima sementara
+update public.tednas_rahasia set drive_rahasia_lama = case when drive_rahasia = ${q(RAHASIA2)} then drive_rahasia_lama else drive_rahasia end,
+  drive_rahasia = ${q(RAHASIA2)}, drive_url = ${q(URL_WA)} where id = 1;
+update public.tednas_rahasia set drive_rahasia_lama = case when drive_rahasia = ${q(RAHASIA2)} then drive_rahasia_lama else drive_rahasia end,
+  drive_rahasia = ${q(RAHASIA2)}, drive_url = ${q(URL_WA)} where id = 1;
+do $u$ begin
+  assert (select drive_rahasia_lama from public.tednas_rahasia where id = 1) = ${q(RAHASIA)}, 'pengalihan diulang tidak menimpa kunci lama';
+  assert public.tednas_berkas_sah(${q(tanda(`gdrive/${id(1)}.jpg`))}, false) = ${q(`gdrive/${id(1)}.jpg`)}, 'tanda kunci lama ditolak';
+  assert public.tednas_berkas_sah(${q(tanda2(`gdrive/${id(1)}.jpg`))}, false) = ${q(`gdrive/${id(1)}.jpg`)}, 'tanda kunci baru ditolak';
+  assert public.tednas_berkas_sah(${q(tanda2(`gdrive/${id(1)}.jpg`, "c4".repeat(32)))}, false) is null, 'kunci asing diterima';
+  assert public.tednas_berkas_sah(${q(tanda2(`gdrive/${id(1)}.pdf`))}, false) is null, 'pdf untuk screenshot diterima (kunci baru)';
+end $u$;
+${harusGagal(`select public.tednas_drive_antre(${q(RAHASIA)}, 'sheet', 1)`, "KUNCI_SALAH")}
+${harusGagal(`select public.tednas_drive_selesai(${q(RAHASIA)}, 'sheet', (select id from public.tednas_tim_publik limit 1), 1)`, "KUNCI_SALAH")}
+${harusGagal(`select public.tednas_drive_setel_url(${q(RAHASIA)}, ${q(URL_WA)})`, "KUNCI_SALAH")}
+set role anon;
+do $u$ begin perform public.tednas_drive_antre(${q(RAHASIA2)}, 'sheet', 1); end $u$;
+${daftar("Campur Kunci", "081234567808", "35.07.18.2017", pemain(8).map((x, i) => (i % 2 ? { ...x, dokumen_path: tanda2(x.dokumen_path.split("~")[0]) } : x)))};
+reset role;
+do $u$ declare k record; begin
+  select * into k from net._kirim order by id desc limit 1;
+  assert k.body->'tim'->>'nama_tim' = 'Campur Kunci' and k.body->>'kunci' = ${q(RAHASIA2)}, 'kabar membawa kunci baru';
+  assert (select count(*) from public.tednas_pemain where dokumen_path like '%~%') = 0, 'path tersimpan tanpa tanda';
+end $u$;
+update public.tednas_rahasia set drive_rahasia_lama = null where id = 1;
+do $u$ begin
+  assert public.tednas_berkas_sah(${q(tanda(`gdrive/${id(1)}.jpg`))}, false) is null, 'kunci lama masih diterima setelah dicabut';
+end $u$;
+${harusGagal(`select drive_rahasia_lama from public.tednas_rahasia`, "permission denied", "authenticated")}
 \\echo SEMUA_LULUS
 `;
 
@@ -209,8 +241,9 @@ const tmp = mkdtempSync(join(tmpdir(), "tednas-sql-"));
 const f = join(tmp, "uji.sql");
 const skema = baca("supabase/schema-tednas.sql").replace(/^create extension if not exists http with schema extensions;$/m, "-- (http: tiruan)");
 const migrasi = baca("supabase/migration-8-drive.sql").replace(/^create extension if not exists pg_net with schema extensions;$/m, "-- (pg_net: tiruan)");
+const migrasi9 = baca("supabase/migration-9-pindah-akun-drive.sql");
 writeFileSync(f, ["\\set ON_ERROR_STOP 1", "\\set QUIET 1", "\\set VERBOSITY verbose", "set client_min_messages = warning;", baca("uji/sql-tiruan-supabase.sql"), skema,
-  "-- migrasi 8 dua kali: harus aman dijalankan ulang", migrasi, migrasi, SQL_BANTU, uji, uji2].join("\n")
+  "-- migrasi 8 & 9 dua kali: harus aman dijalankan ulang", migrasi, migrasi, migrasi9, migrasi9, SQL_BANTU, uji, uji2].join("\n")
   .replace(/^-- (\d+)\. (.*)$/gm, (_, n, t) => `\\echo LANGKAH ${n}: ${t}`));
 const NAMA = "tednas-uji-pg";
 const ssh = (cmd, input) => execFileSync("ssh", ["-o", "ConnectTimeout=15", "jot", cmd], { input, encoding: "utf8", stdio: ["pipe", "pipe", "pipe"] });
@@ -221,7 +254,7 @@ try {
   catch (e) { console.error(`GAGAL:\n${e.stdout ?? ""}\n${e.stderr ?? e.message}`); process.exitCode = 1; }
   if (keluar !== undefined) {
     if (!keluar.includes("SEMUA_LULUS")) { console.error(keluar); process.exitCode = 1; }
-    else console.log("uji SQL lulus (skema + migrasi 8 di Postgres 17, 11 kelompok)");
+    else console.log("uji SQL lulus (skema + migrasi 8 & 9 di Postgres 17, 12 kelompok)");
   }
 } finally {
   try { ssh(`docker rm -f ${NAMA} >/dev/null 2>&1; true`); } catch { /* */ }

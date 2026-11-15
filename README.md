@@ -16,10 +16,10 @@ Statis (`public/`) + Supabase + Vercel, tanpa proses build.
 
 ## Penyimpanan Google Drive
 
-Berkas pendaftar diunggah langsung ke Google Drive yanuarardaraja@gmail.com lewat Web App Apps Script
+Berkas pendaftar diunggah langsung ke Google Drive esportsdesa@gmail.com lewat Web App Apps Script
 (`deploy/drive/Code.gs`), tidak ke bucket Supabase (paket gratis hanya 1 GB). Data tim dikirim database ke
 Sheet di Drive yang sama seketika saat mendaftar/berubah. Aktif bila `DRIVE_URL` di `public/js/config.js` diisi.
-Pasang, uji, dan perawatan: [deploy/drive/PASANG.md](deploy/drive/PASANG.md). Migrasi: `supabase/migration-8-drive.sql`.
+Pasang, uji, dan perawatan: [deploy/drive/PASANG.md](deploy/drive/PASANG.md). Migrasi: `supabase/migration-8-drive.sql` dan `migration-9-pindah-akun-drive.sql`. Pindah akun dari yanuarardaraja@gmail.com: [deploy/drive/PINDAH-AKUN.md](deploy/drive/PINDAH-AKUN.md).
 
 ## Captcha (Cloudflare Turnstile)
 
