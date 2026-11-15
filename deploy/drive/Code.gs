@@ -1,16 +1,20 @@
 /**
- * TEDNas 2027 — penyimpanan Google Drive (akun pemilik Drive: esportsdesa@gmail.com sejak 15 Nov 2026;
- * sebelumnya yanuarardaraja@gmail.com — lihat deploy/drive/PINDAH-AKUN.md).
+ * TEDNas 2027 — penyimpanan Google Drive di DUA akun (15 Nov 2026):
+ *   PERAN "utama"  (yanuarardaraja@gmail.com) — menerima unggahan pendaftar, dipakai halaman admin.
+ *   PERAN "cermin" (esportsdesa@gmail.com, permintaan Kemendes) — salinan PENUH milik akun itu sendiri:
+ *     tiap kabar tim, berkasnya disalin dari Drive utama (folder utama dibagikan ke akun cermin sebagai Pelihat)
+ *     ke folder tim di Drive cermin, lalu ditulis ke Sheet cermin dengan tautan ke salinan itu.
+ *     Kode yang sama; PERAN diganti saat membuat berkas siap-tempel. Panduan: deploy/drive/CERMIN.md.
  *
- * Satu proyek Apps Script, dua peran:
+ * Satu proyek Apps Script, dua tugas:
  *  1. WEB APP (Deploy → Web app, Execute as: Me, Who has access: Anyone)
  *     - aksi "unggah": browser pendaftar mengirim berkas (base64) → disimpan di "Berkas Masuk/<tanggal>"
  *       → dijawab path "gdrive/<id>.<ext>~<tanda HMAC>" yang diperiksa tednas_daftar() di Supabase.
  *     - aksi "tim" / "hapus": dikirim database (pg_net) SEKETIKA tim mendaftar, berubah, atau dihapus
  *       → baris di Sheet ditulis/ditandai. Wajib membawa KUNCI.
  *     - aksi "berkas": halaman admin membuka berkas; wajib membawa token sesi admin Supabase.
- *     - aksi "salin" / "cek": dipakai skrip pindah akun (berkunci) — salin berkas dari Drive pemilik lama
- *       yang dibagikan ke akun ini, dan periksa bahwa semua berkas/folder sudah di dalam folder TEDNas akun ini.
+ *     - aksi "cek": dipakai skrip pemeriksa (berkunci) — folder tim di dalam folder TEDNas akun ini? kode tim di Sheet?
+ *     Peran cermin: tidak menerima "unggah"/"berkas"; "tim" = salin berkas tim dari Drive utama + tulis Sheet.
  *     Kabar tim baru juga memindahkan berkas tim itu ke folder timnya dengan nama yang terbaca.
  *  2. PEMICU BERKALA `rapikan` (tiap MENIT_PEMICU menit): menyusulkan kabar & perapian yang gagal
  *     (paling banyak RAPI_PER_PUTARAN tim — jatah pemicu Gmail terbatas) dan membuang unggahan yatim.
@@ -26,7 +30,8 @@
  */
 
 var VERSI = "2026-11-15";
-var KUNCI = "__KUNCI__"; // = tednas_rahasia.drive_rahasia di Supabase. RAHASIA: jangan dibagikan.
+var PERAN = "utama"; // "utama" | "cermin"
+var KUNCI = "__KUNCI__"; // utama = tednas_rahasia.drive_rahasia, cermin = .cermin_rahasia. RAHASIA: jangan dibagikan.
 var SUPABASE_URL = "https://dlznnpmzccndjqxxhnio.supabase.co";
 var SUPABASE_KUNCI_PUBLIK = "sb_publishable_jBDfxJAsqsdLlKD3eK_TVA_9l4voeNS"; // sama dengan public/js/config.js
 
@@ -43,6 +48,7 @@ var MAKS_BYTE = 5 * 1024 * 1024;        // sama dengan batas di daftar.js
 var MAKS_UNGGAH_PER_MENIT = 400;        // rem darurat bila ada yang membanjiri Web App
 var HARI_YATIM = 7;                     // unggahan yang tak pernah dipakai pendaftaran dibuang setelah ini
 var RAPI_PER_PUTARAN = 3;               // ±20 dtk per tim; sisanya putaran berikutnya
+var CERMIN_PER_PUTARAN = 5;             // cermin: ±30 dtk per tim baru (menyalin), beberapa detik bila sudah ada
 
 var JENIS = { "image/jpeg": "jpg", "image/png": "png", "application/pdf": "pdf" };
 var BERKAS = [
@@ -70,12 +76,12 @@ function pasang() {
   if (induk.gagalBagikan.length) Logger.log("GAGAL membagikan ke: " + induk.gagalBagikan.join(" | "));
   // ScriptApp.getService().getUrl() TIDAK bisa dipercaya (12 Nov 2026: memberi alamat /exec yang 404 untuk publik).
   Logger.log("Web App: salin 'Web app URL' (berakhiran /exec) dari Deploy → Manage deployments; Who has access harus 'Anyone'.");
+  Logger.log("Peran  : " + PERAN);
   try {
-    rpc("tednas_drive_antre", { p_kunci: KUNCI, p_jenis: "sheet", p_batas: 1 });
+    if (PERAN === "cermin") rpc("tednas_cermin_antre", { p_kunci: KUNCI, p_batas: 1 });
+    else rpc("tednas_drive_antre", { p_kunci: KUNCI, p_jenis: "sheet", p_batas: 1 });
   } catch (err) {
-    // Pindah akun: kunci baru baru dipasang di Supabase bersamaan dengan alamat Web App (PINDAH-AKUN.md).
-    Logger.log("Supabase belum menerima kunci skrip ini (" + pesanGalat(err) + "). WAJAR bila sedang pindah akun: " +
-      "deploy Web App lalu kirim 'Web app URL' ke pemasang. Pemasangan baru: jalankan dulu SQL dari PASANG.md.");
+    Logger.log("Supabase MENOLAK kunci skrip ini: " + pesanGalat(err) + " — kunci belum dipasang di Supabase (PASANG.md / CERMIN.md).");
     return;
   }
   Logger.log("Supabase: kunci cocok.");
@@ -98,7 +104,7 @@ function sheetBaru() {
 /* ── Web App ──────────────────────────────────────────────────────────── */
 
 function doGet() {
-  return jawab({ ok: true, nama: "TEDNas Drive", versi: VERSI });
+  return jawab({ ok: true, nama: "TEDNas Drive", versi: VERSI, peran: PERAN });
 }
 
 function doPost(e) {
@@ -109,11 +115,11 @@ function doPost(e) {
     return jawab({ ok: false, pesan: "BADAN_TIDAK_SAH" });
   }
   try {
-    if (isi.aksi === "unggah") return jawab(unggah(isi));
-    if (isi.aksi === "berkas") return jawab(lihatBerkas(isi));
-    if (isi.aksi === "tim") return jawab((cekKunci(isi.kunci), kabarTim(isi.tim)));
+    var cermin = PERAN === "cermin";
+    if (isi.aksi === "unggah") return jawab(cermin ? { ok: false, pesan: "BUKAN_WEB_APP_UTAMA" } : unggah(isi));
+    if (isi.aksi === "berkas") return jawab(cermin ? { ok: false, pesan: "BUKAN_WEB_APP_UTAMA" } : lihatBerkas(isi));
+    if (isi.aksi === "tim") return jawab((cekKunci(isi.kunci), cermin ? kabarCermin(isi.tim) : kabarTim(isi.tim)));
     if (isi.aksi === "hapus") return jawab((cekKunci(isi.kunci), kabarHapus(isi.kode)));
-    if (isi.aksi === "salin") return jawab((cekKunci(isi.kunci), salinBerkas(isi.path)));
     if (isi.aksi === "cek") return jawab((cekKunci(isi.kunci), cekMilik(isi)));
     return jawab({ ok: false, pesan: "AKSI_TIDAK_DIKENAL" });
   } catch (err) {
@@ -241,30 +247,91 @@ function kabarHapus(kode) {
   } finally {
     gembok.releaseLock();
   }
-  rpc("tednas_drive_hapus_selesai", { p_kunci: KUNCI, p_kode: kode });
+  rpc(PERAN === "cermin" ? "tednas_cermin_hapus_selesai" : "tednas_drive_hapus_selesai", { p_kunci: KUNCI, p_kode: kode });
   return { ok: true };
 }
 
-/* ── Pindah akun (dipanggil skrip pindah, berkunci) ───────────────────── */
+/* ── Peran cermin ─────────────────────────────────────────────────────── */
 
 /**
- * Salin satu berkas dari Drive pemilik lama (foldernya harus dibagikan ke akun ini, minimal Pelihat) ke
- * "Berkas Masuk/<hari ini>" dengan nama acak — sama seperti unggahan baru, jadi kalau path-nya tidak pernah
- * dipasang ke database, salinan itu dibuang buangYatim(). Berkas yang sudah di folder TEDNas akun ini
- * dikembalikan apa adanya (aman diulang).
+ * Satu tim → salinan penuh di Drive akun ini: berkas disalin dari Drive utama ke folder tim (deskripsi
+ * "asal:<id di Drive utama>" supaya tidak disalin dua kali), salinan berkas yang sudah diganti dibuang,
+ * lalu Sheet ditulis dengan tautan ke SALINAN. Aman diulang.
  */
-function salinBerkas(path) {
-  var m = /^gdrive\/([A-Za-z0-9_-]{10,100})\.(pdf|jpg|png)$/.exec(String(path || ""));
-  if (!m) return { ok: false, pesan: "PATH_TIDAK_SAH" };
-  var f;
+function kabarCermin(t) {
+  if (!t || !/^TED-\d+$/.test(String(t.kode || "")) || !t.id) return { ok: false, pesan: "TIM_TIDAK_SAH" };
+  var c = CacheService.getScriptCache();
+  var k = "cermin:" + t.kode;
+  if (c.get(k)) return { ok: false, pesan: "SIBUK", ulang: true }; // tim ini sedang disalin eksekusi lain
+  c.put(k, "1", 330);
   try {
-    f = DriveApp.getFileById(m[1]);
-  } catch (err) {
-    return { ok: false, pesan: "BERKAS_TIDAK_TERBUKA" }; // folder lama belum dibagikan ke akun ini
+    var folder = folderTim(t);
+    var salinan = cerminBerkas(t, folder);
+    var gembok = LockService.getScriptLock();
+    if (!gembok.tryLock(30000)) return { ok: false, pesan: "SIBUK", ulang: true };
+    try {
+      tulisTim(dasar().ss, salinan);
+    } finally {
+      gembok.releaseLock();
+    }
+    rpc("tednas_cermin_selesai", { p_kunci: KUNCI, p_tim: t.id, p_versi: t.versi, p_folder: folder.getUrl() });
+    return { ok: true, disalin: salinan.disalin };
+  } finally {
+    c.remove(k);
   }
-  if (diDalam(f, dasar().folder.getId(), 4)) return { ok: true, path: path, sudah: true };
-  var baru = f.makeCopy(Utilities.getUuid() + "." + m[2], folderMasuk(tanggalWib(new Date())));
-  return { ok: true, path: "gdrive/" + baru.getId() + "." + m[2], sudah: false };
+}
+
+function cerminBerkas(t, folder) {
+  var ada = {};
+  var it = folder.getFiles();
+  while (it.hasNext()) {
+    var f = it.next();
+    if (f.isTrashed()) continue;
+    var m = /^asal:([A-Za-z0-9_-]+)$/.exec(String(f.getDescription() || ""));
+    if (!m) continue;
+    if (ada[m[1]]) { f.setTrashed(true); continue; } // kembar (dua eksekusi sempat menyalin bersamaan)
+    ada[m[1]] = f;
+  }
+  var dipakai = {};
+  var disalin = 0;
+  var pemain = (t.pemain || []).map(function (p) {
+    var q = Object.assign({}, p);
+    BERKAS.forEach(function (b) {
+      var m = /^gdrive\/([A-Za-z0-9_-]+)\.(pdf|jpg|png)$/.exec(String(p[b.kolom] || ""));
+      if (!m) return; // kosong / berkas lama di bucket Supabase (tautannya ditulis apa adanya)
+      var nama = p.urutan + ". " + bersih(p.nama) + " — " + (b.label || p.dokumen_jenis) + "." + m[2];
+      var f = ada[m[1]];
+      if (!f) {
+        f = DriveApp.getFileById(m[1]).makeCopy(nama, folder);
+        f.setDescription("asal:" + m[1]);
+        ada[m[1]] = f;
+        disalin++;
+      } else if (f.getName() !== nama) {
+        f.setName(nama);
+      }
+      dipakai[m[1]] = true;
+      q[b.kolom] = "gdrive/" + f.getId() + "." + m[2];
+    });
+    return q;
+  });
+  Object.keys(ada).forEach(function (id) { if (!dipakai[id]) ada[id].setTrashed(true); }); // berkas sudah diganti di situs
+  return Object.assign({}, t, { pemain: pemain, folder: folder.getUrl(), disalin: disalin });
+}
+
+/** Pemicu cermin: kabar yang gagal/terlambat (cermin_tersalin < drive_versi) + antrean hapus. */
+function susulCermin(habis, hasil) {
+  var a = rpc("tednas_cermin_antre", { p_kunci: KUNCI, p_batas: CERMIN_PER_PUTARAN });
+  (a.hapus || []).forEach(function (h) {
+    if (habis()) return;
+    try { if (kabarHapus(h.kode).ok) hasil.hapus++; } catch (err) { hasil.galat.push(h.kode + ": " + pesanGalat(err)); }
+  });
+  (a.tim || []).forEach(function (t) {
+    if (habis()) return;
+    try {
+      var r = kabarCermin(t);
+      if (r.ok) hasil.sheet++; else hasil.galat.push(t.kode + ": " + r.pesan);
+    } catch (err) { hasil.galat.push(t.kode + ": " + pesanGalat(err)); }
+  });
 }
 
 /** Periksa: berkas & folder tim ini di dalam folder TEDNas akun ini? + kode tim yang tertulis di Sheet. */
@@ -299,8 +366,12 @@ function rapikan() {
   var habis = function () { return Date.now() - mulai > BATAS_MS; };
   var hasil = { sheet: 0, rapi: 0, hapus: 0, buang: 0, galat: [] };
   try {
+    if (PERAN === "cermin") {
+      try { susulCermin(habis, hasil); } catch (err) { hasil.galat.push("antre: " + pesanGalat(err)); }
+      return hasil;
+    }
     // 1. Kabar yang gagal/terlambat dari database (drive_tersalin < drive_versi) + antrean hapus.
-    //    Supabase menolak (mis. kunci belum dipasang saat pindah akun) → putaran ini selesai, tercatat di DETAK.
+    //    Supabase menolak (mis. kunci belum dipasang) → putaran ini selesai, tercatat di DETAK.
     var a;
     try {
       a = rpc("tednas_drive_antre", { p_kunci: KUNCI, p_jenis: "sheet", p_batas: 50 });

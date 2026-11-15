@@ -6,6 +6,7 @@
  */
 import assert from "node:assert/strict";
 import { buatDunia } from "./tiruan-google.mjs";
+import { randomUUID } from "node:crypto";
 
 const URL_EXEC = "https://script.google.com/macros/s/AKfycbTEDNASuji0123456789abcdefghij/exec";
 let lulus = 0;
@@ -220,11 +221,11 @@ await uji("tim lama (berkas di bucket Supabase): baris tertulis, berkas tidak di
   assert.equal(anakDari(benda.get(lama.folder.split("/").pop())).length, 0);
 });
 
-await uji("pindah akun: pasang & pemicu tenang selama Supabase belum menerima kunci baru", () => {
-  S.kunciDb = "kunci-lama-di-supabase";
+await uji("kunci belum dipasang di Supabase: pasang berhenti dengan pesan jelas, pemicu tidak meledak", () => {
+  S.kunciDb = "kunci-lain-di-supabase";
   log.length = 0;
   gs.pasang();
-  assert.ok(log.some((l) => l.includes("WAJAR bila sedang pindah akun")), log.join("\n"));
+  assert.ok(log.some((l) => l.includes("Supabase MENOLAK kunci skrip ini")), log.join("\n"));
   assert.ok(!log.some((l) => l.startsWith("Putaran pertama")), "putaran pertama dilewati");
   assert.equal(pemicu.length, 1);
   S.jam += 10 * 60_000;
@@ -232,66 +233,6 @@ await uji("pindah akun: pasang & pemicu tenang selama Supabase belum menerima ku
   assert.ok(h.galat.some((g) => g.startsWith("antre:") && g.includes("KUNCI_SALAH")), JSON.stringify(h));
   assert.equal(cache.has("rapikan_jalan"), false);
   S.kunciDb = KUNCI;
-});
-
-await uji("pindah akun: salin dari Drive lama → Berkas Masuk, aman diulang, cek milik, lalu dirapikan", () => {
-  // Folder akun lama yang dibagikan ke akun ini: di luar folder TEDNas akun ini.
-  const lamaRoot = gs.DriveApp.createFolder("TEDNas 2027 — Data Pendaftar (akun lama)");
-  const lamaTim = lamaRoot.createFolder("TED-00099 — Tim Pindahan");
-  const isiLama = new Map();
-  const berkasLama = (nama, buf, mime) => { const f = lamaTim.createFile(blob(signed(buf), mime, nama)); const p = `gdrive/${f.getId()}.${nama.split(".").pop()}`; isiLama.set(p, buf); return p; };
-  const pindahan = daftarTim("Tim Pindahan", Array.from({ length: 5 }, (_, i) => ({ nama: `Pindah ${i}`,
-    dok: berkasLama(`${i + 1}. Pindah ${i} — KTP.jpg`, JPG(`p${i}d`), "image/jpeg"), ml: berkasLama(`${i + 1}. Pindah ${i} — Profil ML.png`, PNG(`p${i}m`), "image/png"),
-    ig1: berkasLama(`${i + 1}. a.jpg`, JPG(`p${i}a`), "image/jpeg"), ig2: berkasLama(`${i + 1}. b.jpg`, JPG(`p${i}b`), "image/jpeg"),
-    izin: i === 4 ? berkasLama("5. izin.pdf", PDF("p4"), "application/pdf") : null })), { lama: true });
-  pindahan.tersalin = pindahan.versi; pindahan.rapi = 1; pindahan.folder = lamaTim.getUrl(); // tertulis di Sheet akun lama
-  const salin = (path, kunci = KUNCI) => post({ aksi: "salin", kunci, path });
-  const cek = (isi) => post({ aksi: "cek", kunci: KUNCI, ...isi });
-
-  assert.equal(salin(pindahan.pemain[0].dokumen_path, "kunci-salah").pesan, "KUNCI_SALAH");
-  assert.equal(post({ aksi: "salin", path: pindahan.pemain[0].dokumen_path }).pesan, "KUNCI_SALAH");
-  assert.equal(salin("gdrive/../x.jpg").pesan, "PATH_TIDAK_SAH");
-  assert.equal(salin("gdrive/1TiruBelumDibagikan000000.jpg").pesan, "BERKAS_TIDAK_TERBUKA");
-  assert.equal(post({ aksi: "cek", kunci: "x", berkas: [] }).pesan, "KUNCI_SALAH");
-
-  const peta = new Map();
-  for (const p of pindahan.pemain) for (const k of ["dokumen_path", "profil_ml_path", "follow_esports_path", "follow_ppdt_path", "izin_path"]) {
-    if (!p[k]) continue;
-    const r = salin(p[k]);
-    assert.equal(r.ok, true, JSON.stringify(r)); assert.equal(r.sudah, false);
-    assert.notEqual(r.path, p[k]); assert.equal(r.path.split(".").pop(), p[k].split(".").pop());
-    const f = benda.get(r.path.slice(7).split(".")[0]);
-    assert.ok(f._isi.equals(isiLama.get(p[k])), "isi salinan utuh");
-    assert.match(f.getName(), /^[0-9a-f-]{36}\.(jpg|png|pdf)$/, "nama acak seperti unggahan (bisa dibuang bila yatim)");
-    assert.equal(benda.get(benda.get(f._induk)._induk).getName(), "Berkas Masuk");
-    assert.equal(benda.get(p[k].slice(7).split(".")[0])._induk, lamaTim.getId(), "berkas lama tidak disentuh");
-    assert.deepEqual(salin(r.path), { ok: true, path: r.path, sudah: true }, "salin ulang = no-op");
-    peta.set(p[k], r.path);
-  }
-  const lamaPaths = [...peta.keys()], baruPaths = [...peta.values()];
-  let c = cek({ berkas: [...lamaPaths.slice(0, 2), ...baruPaths.slice(0, 2), "gdrive/1TiruTidakAda00000000000.jpg"], folder: [lamaTim.getUrl(), "bukan url"], kode: true });
-  assert.deepEqual(c.berkas, [false, false, true, true, false]);
-  assert.deepEqual(c.folder, [false, false]);
-  assert.ok(!c.kode.includes(pindahan.kode), "belum ada di Sheet akun ini");
-
-  // Skrip pindah mengganti path di database dalam satu pernyataan (versi naik, rapi = 0, folder dikosongkan) → kabar.
-  for (const p of pindahan.pemain) for (const k of Object.keys(p)) if (peta.has(p[k])) p[k] = peta.get(p[k]);
-  pindahan.versi++; pindahan.rapi = 0; pindahan.folder = null;
-  assert.deepEqual(kabar("tim", { tim: paket(pindahan) }), { ok: true, rapi: true });
-  assert.equal(pindahan.tersalin, pindahan.versi);
-  assert.ok(pindahan.folder && pindahan.folder !== lamaTim.getUrl());
-  c = cek({ berkas: baruPaths, folder: [pindahan.folder], kode: true });
-  assert.ok(c.berkas.every(Boolean), JSON.stringify(c.berkas));
-  assert.deepEqual(c.folder, [true]);
-  assert.ok(c.kode.includes(pindahan.kode));
-  assert.equal(benda.get(baruPaths[0].slice(7).split(".")[0]).getName(), "1. Pindah 0 — KTP.jpg");
-  assert.ok(lamaPaths.every((p) => benda.get(p.slice(7).split(".")[0])._induk === lamaTim.getId()), "akun lama tetap utuh (cadangan)");
-  // Salinan yang tak pernah dipasang ke database dibuang seperti unggahan yatim.
-  const sia = salin(lamaPaths[0]).path;
-  S.jam += 8 * 86_400_000;
-  gs.rapikan();
-  assert.equal(benda.get(sia.slice(7).split(".")[0]).isTrashed(), true);
-  assert.equal(benda.get(baruPaths[0].slice(7).split(".")[0]).isTrashed(), false);
 });
 
 await uji("detak tercatat & galat tidak menghentikan putaran", () => {
@@ -307,7 +248,135 @@ await uji("detak tercatat & galat tidak menghentikan putaran", () => {
   assert.equal(cache.has("rapikan_jalan"), false, "penanda jalan dilepas");
 });
 
-console.log(`${lulus} uji Code.gs lulus`);
+console.log(`${lulus} uji Code.gs (utama) lulus`);
+
+/* ── PERAN cermin (akun esportsdesa): salinan penuh dari Drive utama ──── */
+{
+  const C = buatDunia({ KUNCI: "d4".repeat(32), PERAN: "cermin" });
+  const ujiC = (nama, f) => uji(`cermin: ${nama}`, f);
+  // "Drive utama" yang dibagikan ke akun cermin: berkas di luar folder TEDNas akun cermin.
+  const utama = C.gs.DriveApp.createFolder("TEDNas 2027 — Data Pendaftar (akun utama, dibagikan)");
+  const isiUtama = new Map();
+  const berkasUtama = (buf, mime, ext) => { const f = utama.createFile(C.blob(C.signed(buf), mime, `${randomUUID()}.${ext}`)); const p = `gdrive/${f.getId()}.${ext}`; isiUtama.set(p, buf); return p; };
+  const pemainUtama = (k, n = 5) => Array.from({ length: n }, (_, i) => ({ nama: `Pemain ${k}-${i}`, jenis: i === 1 ? "KK" : "KTP",
+    dok: berkasUtama(JPG(`${k}${i}d`), "image/jpeg", "jpg"), ml: berkasUtama(PNG(`${k}${i}m`), "image/png", "png"),
+    ig1: berkasUtama(JPG(`${k}${i}a`), "image/jpeg", "jpg"), ig2: berkasUtama(JPG(`${k}${i}b`), "image/jpeg", "jpg"),
+    izin: i === 4 ? berkasUtama(PDF(`${k}${i}`), "application/pdf", "pdf") : null }));
+  const idDari = (p) => p.slice(7).split(".")[0];
+  const sheet = () => C.benda.get(C.props.get("SHEET"));
+  const isiFolder = (url) => C.anakDari(C.benda.get(url.split("/").pop()));
+  let t1;
+
+  await ujiC("pasang: folder & Sheet sendiri, kunci cermin dicek lewat tednas_cermin_antre", () => {
+    C.gs.pasang();
+    assert.ok(C.log.some((l) => l === "Peran  : cermin"));
+    assert.ok(C.log.some((l) => l === "Supabase: kunci cocok."), C.log.join("\n"));
+    assert.equal(C.pemicu.length, 1);
+    assert.deepEqual(sheet().getSheets().map((s) => s._nama), ["Tim", "Pemain"]);
+  });
+
+  await ujiC("tidak menerima unggahan pendaftar maupun permintaan berkas admin", () => {
+    assert.equal(C.post({ aksi: "unggah", mime: "image/jpeg", data: JPG(1).toString("base64") }).pesan, "BUKAN_WEB_APP_UTAMA");
+    assert.equal(C.post({ aksi: "berkas", path: "gdrive/1TiruApaSajaxxxxxxxx.jpg", token: "token-admin-sah-0123456789" }).pesan, "BUKAN_WEB_APP_UTAMA");
+    assert.equal(JSON.parse(C.gs.doGet().getContent()).peran, "cermin");
+    assert.equal(C.post({ aksi: "tim", kunci: "salah", tim: {} }).pesan, "KUNCI_SALAH");
+  });
+
+  await ujiC("kabar tim: berkas DISALIN ke folder tim akun ini, Sheet bertaut ke salinan, Drive utama utuh", () => {
+    t1 = C.daftarTim("Garuda Cermin", pemainUtama("g"), { lama: true });
+    const r = C.kabar("tim", { tim: C.paket(t1) });
+    assert.deepEqual(r, { ok: true, disalin: 21 });
+    assert.equal(t1.cermin, t1.versi, "cermin_tersalin");
+    assert.match(t1.cfolder, /^https:\/\/drive\.google\.com\/drive\/folders\//);
+    const isi = isiFolder(t1.cfolder);
+    assert.equal(isi.length, 21);
+    assert.ok(isi.some((f) => f.getName() === "1. Pemain g-0 — KTP.jpg"));
+    assert.ok(isi.some((f) => f.getName() === "2. Pemain g-1 — KK.jpg"));
+    assert.ok(isi.some((f) => f.getName() === "5. Pemain g-4 — Izin orang tua.pdf"));
+    const p0 = t1.pemain[0].dokumen_path;
+    const salinan = isi.find((f) => f.getDescription() === `asal:${idDari(p0)}`);
+    assert.ok(salinan && salinan._isi.equals(isiUtama.get(p0)), "isi salinan utuh");
+    assert.equal(C.benda.get(idDari(p0))._induk, utama.getId(), "berkas utama tidak dipindah");
+    assert.equal(C.benda.get(C.benda.get(t1.cfolder.split("/").pop())._induk)._nama, "35 JAWA TIMUR");
+    const tim = sheet().getSheetByName("Tim").data().find((x) => x[0] === t1.kode);
+    assert.equal(tim[12], t1.cfolder, "kolom Folder berkas = folder cermin");
+    const pem = sheet().getSheetByName("Pemain").data().filter((x) => x[0] === t1.kode);
+    assert.equal(pem.length, 5);
+    assert.equal(pem[0][6], `https://drive.google.com/file/d/${salinan.getId()}/view`, "tautan ke SALINAN, bukan berkas utama");
+    assert.ok(pem.every((x) => !x.join(" ").includes(utama.getId())));
+  });
+
+  await ujiC("kabar ulang (verifikasi admin): tidak menyalin lagi, baris diperbarui di tempat", () => {
+    t1.status = "terverifikasi"; t1.versi++;
+    assert.deepEqual(C.kabar("tim", { tim: C.paket(t1) }), { ok: true, disalin: 0 });
+    assert.equal(isiFolder(t1.cfolder).length, 21);
+    assert.equal(sheet().getSheetByName("Tim").data().filter((x) => x[0] === t1.kode)[0][9], "Terverifikasi");
+    assert.equal(t1.cermin, t1.versi);
+  });
+
+  await ujiC("berkas pemain diganti di situs → salinan baru, salinan lama ke tempat sampah; salinan kembar dibereskan", () => {
+    const lamaPath = t1.pemain[2].profil_ml_path;
+    const lama = isiFolder(t1.cfolder).find((f) => f.getDescription() === `asal:${idDari(lamaPath)}`);
+    t1.pemain[2].profil_ml_path = berkasUtama(PNG("ganti"), "image/png", "png");
+    t1.versi++;
+    // seolah dua eksekusi sempat menyalin berkas yang sama
+    const kembar = lama.makeCopy("kembar.png", C.benda.get(t1.cfolder.split("/").pop())).setDescription(lama.getDescription());
+    assert.deepEqual(C.kabar("tim", { tim: C.paket(t1) }), { ok: true, disalin: 1 });
+    assert.equal(lama.isTrashed() && kembar.isTrashed(), true);
+    const baru = isiFolder(t1.cfolder).find((f) => f.getDescription() === `asal:${idDari(t1.pemain[2].profil_ml_path)}`);
+    assert.equal(baru.getName(), "3. Pemain g-2 — Profil ML.png");
+    assert.equal(isiFolder(t1.cfolder).length, 21);
+    assert.equal(sheet().getSheetByName("Pemain").data().filter((x) => x[0] === t1.kode)[2][7], `https://drive.google.com/file/d/${baru.getId()}/view`);
+  });
+
+  await ujiC("tim yang sama sedang disalin eksekusi lain → SIBUK (disusulkan pemicu)", () => {
+    C.cache.set(`cermin:${t1.kode}`, "1");
+    assert.equal(C.kabar("tim", { tim: C.paket(t1) }).pesan, "SIBUK");
+    C.cache.delete(`cermin:${t1.kode}`);
+  });
+
+  await ujiC("pemicu menyusulkan tim yang tertinggal (dibatasi per putaran) & antrean hapus cermin", () => {
+    const banyak = Array.from({ length: 7 }, (_, i) => C.daftarTim(`Susul ${i}`, pemainUtama(`s${i}`, 5), { lama: true }));
+    C.S.jam += 10 * 60_000;
+    let h = J(C.gs.rapikan());
+    assert.equal(h.sheet, 5, JSON.stringify(h));
+    h = J(C.gs.rapikan());
+    assert.equal(h.sheet, 2);
+    assert.ok(banyak.every((t) => t.cermin === t.versi && t.cfolder));
+    C.db.chapus.push({ kode: banyak[0].kode, nama_tim: banyak[0].nama_tim });
+    C.db.tim = C.db.tim.filter((x) => x.kode !== banyak[0].kode);
+    h = J(C.gs.rapikan());
+    assert.equal(h.hapus, 1);
+    assert.equal(C.db.chapus.length, 0, "tednas_cermin_hapus_selesai dipanggil");
+    assert.equal(sheet().getSheetByName("Tim").data().find((x) => x[0] === banyak[0].kode)[9], "DIHAPUS dari situs");
+    assert.ok(C.benda.get(banyak[0].cfolder.split("/").pop())._nama.startsWith("[DIHAPUS] "));
+  });
+
+  await ujiC("berkas utama belum terbaca (folder utama belum dibagikan) → galat, tim lain tetap jalan", () => {
+    const rusak = C.daftarTim("Belum Dibagikan", pemainUtama("r"), { lama: true });
+    C.benda.delete(idDari(rusak.pemain[0].dokumen_path));
+    const sehat = C.daftarTim("Sehat", pemainUtama("h"), { lama: true });
+    C.S.jam += 10 * 60_000;
+    const h = J(C.gs.rapikan());
+    assert.ok(h.galat.some((g) => g.startsWith(rusak.kode)), JSON.stringify(h));
+    assert.equal(rusak.cermin ?? 0, 0, "tidak ditandai tersalin");
+    assert.equal(sehat.cermin, sehat.versi);
+  });
+
+  await ujiC("tim lama (bucket Supabase): baris tertulis apa adanya, tidak ada yang disalin", () => {
+    const lama = C.daftarTim("Tim Lama", Array.from({ length: 5 }, (_, i) => ({ nama: `Lama ${i}`, dok: `dokumen/a${i}.jpg`, ml: `dokumen/b${i}.png`, ig1: `dokumen/c${i}.jpg`, ig2: `dokumen/d${i}.jpg` })), { lama: true });
+    assert.deepEqual(C.kabar("tim", { tim: C.paket(lama) }), { ok: true, disalin: 0 });
+    assert.equal(sheet().getSheetByName("Pemain").data().find((x) => x[0] === lama.kode)[6], "Supabase: dokumen/a0.jpg");
+  });
+
+  await ujiC("cek: folder tim di dalam folder TEDNas akun ini + daftar kode di Sheet", () => {
+    const c = C.post({ aksi: "cek", kunci: C.KUNCI, folder: [t1.cfolder, utama.getUrl()], kode: true });
+    assert.deepEqual(c.folder, [true, false]);
+    assert.ok(c.kode.includes(t1.kode));
+  });
+  console.log(`${lulus} uji Code.gs lulus (utama + cermin)`);
+}
+
 
 /* ── public/js/drive.js (bagian browser) ──────────────────────────────── */
 {

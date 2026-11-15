@@ -11,18 +11,19 @@ import vm from "node:vm";
 
 const AKAR = new URL("..", import.meta.url);
 
-export function buatDunia({ KUNCI = "c3".repeat(32) } = {}) {
+export function buatDunia({ KUNCI = "c3".repeat(32), PERAN = "utama" } = {}) {
 const KODE_GS = readFileSync(new URL("deploy/drive/Code.gs", AKAR), "utf8");
-const MIGRASI = readFileSync(new URL("supabase/migration-8-drive.sql", AKAR), "utf8");
+const MIGRASI = ["supabase/migration-8-drive.sql", "supabase/migration-9-cermin-drive.sql"].map((f) => readFileSync(new URL(f, AKAR), "utf8")).join("\n");
 const SB = "https://dlznnpmzccndjqxxhnio.supabase.co";
 const J = (x) => JSON.parse(JSON.stringify(x));
 const S = {};
 /* ── tanda tangan RPC dari migrasi ────────────────────────────────────── */
 const TTD = {};
-for (const m of MIGRASI.matchAll(/create or replace function public\.(tednas_drive_\w+)\(([^)]*)\)/g)) {
+for (const m of MIGRASI.matchAll(/create or replace function public\.(tednas_(?:drive|cermin)_\w+)\(([^)]*)\)/g)) {
   TTD[m[1]] = m[2].split(",").map((x) => x.trim()).filter(Boolean).map((x) => ({ nama: x.split(/\s+/)[0], wajib: !/\bdefault\b/i.test(x) }));
 }
-for (const f of ["tednas_drive_antre", "tednas_drive_selesai", "tednas_drive_hapus_selesai", "tednas_drive_dipakai", "tednas_drive_setel_url"]) assert.ok(TTD[f], `fungsi ${f} tidak ada di migrasi`);
+for (const f of ["tednas_drive_antre", "tednas_drive_selesai", "tednas_drive_hapus_selesai", "tednas_drive_dipakai", "tednas_drive_setel_url",
+  "tednas_cermin_antre", "tednas_cermin_selesai", "tednas_cermin_hapus_selesai"]) assert.ok(TTD[f], `fungsi ${f} tidak ada di migrasi`);
 
 /* ── waktu ────────────────────────────────────────────────────────────── */
 S.jam = Date.parse("2026-11-11T03:00:00Z");
@@ -42,8 +43,9 @@ function blob(bytes, mime, nama) {
 }
 function buatBerkas(nama, isi, mime, induk) {
   const id = idBaru();
-  const f = { _jenis: "berkas", _nama: nama, _isi: isi, _mime: mime, _induk: induk, _sampah: false,
+  const f = { _jenis: "berkas", _nama: nama, _isi: isi, _mime: mime, _induk: induk, _sampah: false, _ket: "",
     getId: () => id, getName: () => f._nama, setName(x) { hitung.setName++; f._nama = x; return f; },
+    getDescription: () => f._ket, setDescription(x) { f._ket = x; return f; },
     getUrl: () => `https://drive.google.com/file/d/${id}/view?usp=drivesdk`, isTrashed: () => f._sampah, setTrashed(x) { f._sampah = x; return f; },
     moveTo(d) { hitung.moveTo++; f._induk = d.getId(); return f; }, makeCopy: (n, d) => buatBerkas(n, f._isi, f._mime, d.getId()), getParents: () => iter(f._induk && benda.has(f._induk) ? [benda.get(f._induk)] : []),
     getBlob: () => blob(signed(f._isi), f._mime, f._nama) };
@@ -108,7 +110,7 @@ const SpreadsheetApp = {
 };
 
 /* ── Supabase tiruan (kontrak migration-8) ────────────────────────────── */
-const db = { tim: [], hapus: [], url: null, admin: new Map([["token-admin-sah-0123456789", "u-admin"], ["token-bukan-admin-012345", "u-biasa"]]), adminId: new Set(["u-admin"]) };
+const db = { tim: [], hapus: [], chapus: [], url: null, admin: new Map([["token-admin-sah-0123456789", "u-admin"], ["token-bukan-admin-012345", "u-biasa"]]), adminId: new Set(["u-admin"]) };
 let seq = 0;
 const paket = (t) => J({ ...t, pemain: t.pemain });
 function rpcTiruan(nama, b) {
@@ -137,6 +139,16 @@ function rpcTiruan(nama, b) {
     case "tednas_drive_setel_url":
       if (!/^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]{20,200}\/exec$/.test(b.p_url)) return [400, { message: "URL_SALAH" }];
       db.url = b.p_url; return [200, { ok: true }];
+    case "tednas_cermin_antre": {
+      const perlu = db.tim.filter((x) => (x.cermin ?? 0) < x.versi);
+      return [200, { tim: perlu.slice(0, b.p_batas ?? 5).map(paket), sisa: perlu.length, hapus: db.chapus.map((h) => ({ ...h })) }];
+    }
+    case "tednas_cermin_selesai": {
+      const x = cari(b.p_tim);
+      if (x) { x.cermin = Math.max(x.cermin ?? 0, Math.min(b.p_versi, x.versi)); x.cfolder = b.p_folder || x.cfolder; }
+      return [200, { ok: true }];
+    }
+    case "tednas_cermin_hapus_selesai": db.chapus = db.chapus.filter((h) => h.kode !== b.p_kode); return [200, { ok: true }];
   }
   return [404, { message: "tidak ada" }];
 }
@@ -208,7 +220,8 @@ const google = {
   Session: { getEffectiveUser: () => ({ getEmail: () => "yanuarardaraja@gmail.com" }) },
 };
 const gs = vm.createContext({ ...google, Date: TDate });
-vm.runInContext(KODE_GS.replace('"__KUNCI__"', JSON.stringify(KUNCI)), gs, { filename: "Code.gs" });
+assert.ok(KODE_GS.includes('var PERAN = "utama";'), "penanda PERAN hilang dari Code.gs");
+vm.runInContext(KODE_GS.replace('"__KUNCI__"', JSON.stringify(KUNCI)).replace('var PERAN = "utama";', `var PERAN = ${JSON.stringify(PERAN)};`), gs, { filename: "Code.gs" });
 const post = (isi) => J(JSON.parse(gs.doPost({ postData: { contents: typeof isi === "string" ? isi : JSON.stringify(isi) } }).getContent()));
 
 

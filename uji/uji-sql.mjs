@@ -1,6 +1,6 @@
 /**
  * Uji SQL TEDNas di Postgres SUNGGUHAN (container sementara di server jot, dibuang setelahnya):
- * skema-tednas.sql + migration-8-drive.sql + migration-9-pindah-akun-drive.sql di atas tiruan Supabase (uji/sql-tiruan-supabase.sql).
+ * skema-tednas.sql + migration-8-drive.sql + migration-9-cermin-drive.sql di atas tiruan Supabase (uji/sql-tiruan-supabase.sql).
  * Tanda HMAC dibuat dengan crypto Node — sama dengan Utilities.computeHmacSha256Signature di Apps Script —
  * jadi uji ini juga membuktikan pgcrypto menghitung tanda yang sama.
  *   node uji/uji-sql.mjs            (butuh ssh jot + docker postgres:17-alpine di sana)
@@ -16,8 +16,8 @@ const baca = (f) => readFileSync(new URL(f, AKAR), "utf8");
 const RAHASIA = "a1".repeat(32);
 const URL_WA = "https://script.google.com/macros/s/AKfycbUJIuji0123456789abcdefghijklmnop/exec";
 const tanda = (inti) => `${inti}~${createHmac("sha256", RAHASIA).update(inti).digest("hex")}`;
-const RAHASIA2 = "b2".repeat(32); // kunci akun Drive baru (migrasi 9)
-const tanda2 = (inti, k = RAHASIA2) => `${inti}~${createHmac("sha256", k).update(inti).digest("hex")}`;
+const RAHASIA2 = "b2".repeat(32); // kunci Web App cermin (migrasi 9)
+const URL_CERMIN = "https://script.google.com/macros/s/AKfycbCERMINuji0123456789abcdefgh/exec";
 const id = (n) => `1AbCdEfGhIjKlMnOpQrStUvWx_${String(n).padStart(4, "0")}`;
 const pemain = (awal, n = 5) => Array.from({ length: n }, (_, i) => ({
   nama: `Pemain ${awal}-${i + 1}`, dokumen_jenis: "KTP",
@@ -205,35 +205,72 @@ do $u$ begin
   assert (select drive_tersalin < drive_versi from public.tednas_tim where wa_kapten = '6281234567807'), 'tetap antre';
 end $u$;
 
--- 12. pindah akun Drive (migrasi 9): pintu hanya kunci baru, tanda berkas kunci lama masih diterima sementara
-update public.tednas_rahasia set drive_rahasia_lama = case when drive_rahasia = ${q(RAHASIA2)} then drive_rahasia_lama else drive_rahasia end,
-  drive_rahasia = ${q(RAHASIA2)}, drive_url = ${q(URL_WA)} where id = 1;
-update public.tednas_rahasia set drive_rahasia_lama = case when drive_rahasia = ${q(RAHASIA2)} then drive_rahasia_lama else drive_rahasia end,
-  drive_rahasia = ${q(RAHASIA2)}, drive_url = ${q(URL_WA)} where id = 1;
+-- 12. cermin (migrasi 9): kabar ke dua Web App dengan kunci masing-masing, antrean & kunci cermin terpisah
+update public.tednas_rahasia set drive_url = ${q(URL_WA)}, cermin_url = ${q(URL_CERMIN)}, cermin_rahasia = ${q(RAHASIA2)} where id = 1;
+create temp table _awal as select count(*) n from net._kirim;
+grant select on _awal to anon, authenticated;
 do $u$ begin
-  assert (select drive_rahasia_lama from public.tednas_rahasia where id = 1) = ${q(RAHASIA)}, 'pengalihan diulang tidak menimpa kunci lama';
-  assert public.tednas_berkas_sah(${q(tanda(`gdrive/${id(1)}.jpg`))}, false) = ${q(`gdrive/${id(1)}.jpg`)}, 'tanda kunci lama ditolak';
-  assert public.tednas_berkas_sah(${q(tanda2(`gdrive/${id(1)}.jpg`))}, false) = ${q(`gdrive/${id(1)}.jpg`)}, 'tanda kunci baru ditolak';
-  assert public.tednas_berkas_sah(${q(tanda2(`gdrive/${id(1)}.jpg`, "c4".repeat(32)))}, false) is null, 'kunci asing diterima';
-  assert public.tednas_berkas_sah(${q(tanda2(`gdrive/${id(1)}.pdf`))}, false) is null, 'pdf untuk screenshot diterima (kunci baru)';
+  assert (select count(*) from public.tednas_tim where cermin_tersalin < drive_versi) = (select count(*) from public.tednas_tim), 'semua tim antre cermin';
 end $u$;
-${harusGagal(`select public.tednas_drive_antre(${q(RAHASIA)}, 'sheet', 1)`, "KUNCI_SALAH")}
-${harusGagal(`select public.tednas_drive_selesai(${q(RAHASIA)}, 'sheet', (select id from public.tednas_tim_publik limit 1), 1)`, "KUNCI_SALAH")}
-${harusGagal(`select public.tednas_drive_setel_url(${q(RAHASIA)}, ${q(URL_WA)})`, "KUNCI_SALAH")}
 set role anon;
-do $u$ begin perform public.tednas_drive_antre(${q(RAHASIA2)}, 'sheet', 1); end $u$;
-${daftar("Campur Kunci", "081234567808", "35.07.18.2017", pemain(8).map((x, i) => (i % 2 ? { ...x, dokumen_path: tanda2(x.dokumen_path.split("~")[0]) } : x)))};
+${daftar("Dua Akun", "081234567808", "35.07.18.2017", pemain(8))};
 reset role;
-do $u$ declare k record; begin
-  select * into k from net._kirim order by id desc limit 1;
-  assert k.body->'tim'->>'nama_tim' = 'Campur Kunci' and k.body->>'kunci' = ${q(RAHASIA2)}, 'kabar membawa kunci baru';
-  assert (select count(*) from public.tednas_pemain where dokumen_path like '%~%') = 0, 'path tersimpan tanpa tanda';
+do $u$ declare u record; c record; begin
+  assert (select count(*) from net._kirim) = (select n from _awal) + 2, 'satu pendaftaran = dua kabar';
+  select * into u from net._kirim where url = ${q(URL_WA)} order by id desc limit 1;
+  select * into c from net._kirim where url = ${q(URL_CERMIN)} order by id desc limit 1;
+  assert u.body->>'kunci' = ${q(RAHASIA)} and c.body->>'kunci' = ${q(RAHASIA2)}, 'kunci masing-masing';
+  assert u.body->'tim'->>'nama_tim' = 'Dua Akun' and c.body->'tim' = u.body->'tim', 'isi kabar sama';
 end $u$;
-update public.tednas_rahasia set drive_rahasia_lama = null where id = 1;
+${harusGagal(`select public.tednas_cermin_antre(${q(RAHASIA)}, 5)`, "KUNCI_SALAH")}
+${harusGagal(`select public.tednas_drive_antre(${q(RAHASIA2)}, 'sheet', 5)`, "KUNCI_SALAH")}
+${harusGagal(`select public.tednas_drive_setel_url(${q(RAHASIA2)}, ${q(URL_CERMIN)})`, "KUNCI_SALAH")}
+set role anon;
+do $u$ declare a json; v_id uuid; v_versi int; begin
+  a := public.tednas_cermin_antre(${q(RAHASIA2)}, 2);
+  assert json_array_length(a->'tim') = 2 and (a->>'sisa')::int >= 3, 'antre cermin dibatasi';
+  v_id := (a->'tim'->0->>'id')::uuid; v_versi := (a->'tim'->0->>'versi')::int;
+  assert a->'tim'->0->'pemain'->0->>'dokumen_path' like 'gdrive/%', 'paket lengkap dengan path';
+  perform public.tednas_cermin_selesai(${q(RAHASIA2)}, v_id, v_versi, 'https://drive.google.com/drive/folders/cermin1');
+  assert (select (public.tednas_cermin_antre(${q(RAHASIA2)}, 50)->>'sisa')::int) = (a->>'sisa')::int - 1, 'cermin tercatat';
+end $u$;
+reset role;
 do $u$ begin
-  assert public.tednas_berkas_sah(${q(tanda(`gdrive/${id(1)}.jpg`))}, false) is null, 'kunci lama masih diterima setelah dicabut';
+  assert (select count(*) from net._kirim) = (select n from _awal) + 2, 'cermin_selesai TIDAK memicu kabar';
+  assert (select count(*) from public.tednas_tim where cermin_folder = 'https://drive.google.com/drive/folders/cermin1' and cermin_pada is not null) = 1, 'folder cermin';
+  assert (select count(*) from public.tednas_tim where drive_tersalin > 0 and cermin_tersalin = drive_versi) <= 1, 'utama tidak tersentuh';
 end $u$;
-${harusGagal(`select drive_rahasia_lama from public.tednas_rahasia`, "permission denied", "authenticated")}
+-- hapus → antrean hapus utama & cermin + dua kabar hapus
+set role authenticated;
+delete from public.tednas_tim where wa_kapten = '6281234567808';
+reset role;
+do $u$ begin
+  assert (select count(*) from net._kirim where body->>'aksi' = 'hapus' and url = ${q(URL_CERMIN)} and body->>'kunci' = ${q(RAHASIA2)}) = 1, 'kabar hapus ke cermin';
+  assert exists (select 1 from public.tednas_cermin_hapus) and exists (select 1 from public.tednas_drive_hapus), 'dua antrean hapus';
+end $u$;
+set role anon;
+do $u$ declare a json; begin
+  a := public.tednas_cermin_antre(${q(RAHASIA2)}, 5);
+  assert json_array_length(a->'hapus') = 1, 'hapus di antrean cermin';
+  perform public.tednas_cermin_hapus_selesai(${q(RAHASIA2)}, a->'hapus'->0->>'kode');
+  assert json_array_length(public.tednas_cermin_antre(${q(RAHASIA2)}, 5)->'hapus') = 0, 'hapus cermin selesai';
+end $u$;
+reset role;
+do $u$ begin
+  assert exists (select 1 from public.tednas_drive_hapus), 'antrean hapus utama tidak ikut terhapus';
+end $u$;
+-- cermin dilepas: kembali satu kabar
+update public.tednas_rahasia set cermin_url = null where id = 1;
+truncate _awal; insert into _awal select count(*) from net._kirim;
+set role anon;
+${daftar("Satu Akun", "081234567809", "35.07.18.2018", pemain(9))};
+reset role;
+do $u$ begin
+  assert (select count(*) from net._kirim) = (select n from _awal) + 1, 'tanpa cermin_url hanya satu kabar';
+end $u$;
+${harusGagal(`select public.tednas_cermin_kunci_sah('x')`, "permission denied")}
+${harusGagal(`select count(*) from public.tednas_cermin_hapus`, "permission denied")}
+${harusGagal(`select cermin_rahasia from public.tednas_rahasia`, "permission denied", "authenticated")}
 \\echo SEMUA_LULUS
 `;
 
@@ -241,7 +278,7 @@ const tmp = mkdtempSync(join(tmpdir(), "tednas-sql-"));
 const f = join(tmp, "uji.sql");
 const skema = baca("supabase/schema-tednas.sql").replace(/^create extension if not exists http with schema extensions;$/m, "-- (http: tiruan)");
 const migrasi = baca("supabase/migration-8-drive.sql").replace(/^create extension if not exists pg_net with schema extensions;$/m, "-- (pg_net: tiruan)");
-const migrasi9 = baca("supabase/migration-9-pindah-akun-drive.sql");
+const migrasi9 = baca("supabase/migration-9-cermin-drive.sql");
 writeFileSync(f, ["\\set ON_ERROR_STOP 1", "\\set QUIET 1", "\\set VERBOSITY verbose", "set client_min_messages = warning;", baca("uji/sql-tiruan-supabase.sql"), skema,
   "-- migrasi 8 & 9 dua kali: harus aman dijalankan ulang", migrasi, migrasi, migrasi9, migrasi9, SQL_BANTU, uji, uji2].join("\n")
   .replace(/^-- (\d+)\. (.*)$/gm, (_, n, t) => `\\echo LANGKAH ${n}: ${t}`));
