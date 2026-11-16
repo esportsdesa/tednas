@@ -461,5 +461,45 @@ await uji("gabungan: pool gagal di tengah tahap 35B → tetap disimpan 'menunggu
   assert.equal(W.catat.pool.length, 1, "sekali coba lalu ditunda (tidak menahan antrean)");
 });
 
+const ML2 = Buffer.from("BERKAS|gdrive/PROFILML-20000.png").toString("base64");
+const KONTEKS = "request (4152 tokens) exceeds the available context size (4096 tokens), try increasing it";
+const konteksMl2 = (host, isi) => (JSON.stringify(isi).includes(ML2)
+  ? new Response(JSON.stringify({ error: JSON.stringify({ error: { code: 400, message: KONTEKS, type: "exceed_context_size_error" } }) }), { status: 500 }) : null);
+
+await uji("gabungan: gambar melebihi konteks 9b → tidak diulang ke worker lain, langsung dibaca 35B (17 Nov TED-00015)", async () => {
+  mesin("gabungan");
+  const W = duniaPool({ worker: konteksMl2 });
+  await A.putaran({ fetch: W.f, pdfKeGambar: W.pdfKeGambar });
+  const s = W.catat.simpan[0];
+  assert.equal(s.p_hasil, "lolos", s.p_ringkas);
+  assert.equal(s.p_versi, A.VERSI_LENGKAP);
+  assert.equal(W.catat.model.filter((x) => JSON.stringify(x).includes(ML2)).length, 1, "9b dicoba sekali saja");
+  assert.equal(W.catat.pool.length, 1, "berkas itu dibaca 35B");
+  assert.equal(s.p_identitas[1].ml, "482913751(12045)");
+
+  // Pool belum siap → tunda (bukan galat berulang), berkas besar ikut dihitung menunggu.
+  mesin("gabungan");
+  const W2 = duniaPool({ worker: konteksMl2 });
+  rmSync(join(BROKER, "pool-head.txt"));
+  await A.putaran({ fetch: W2.f, pdfKeGambar: W2.pdfKeGambar });
+  assert.equal(W2.catat.simpan[0].p_versi, A.VERSI_TUNDA);
+  assert.equal(W2.catat.simpan[0].p_rincian.tunggu, 1);
+
+  // Konteks 35B pun habis → catatan cek untuk admin, bukan galat yang diulang tiap 30 menit.
+  mesin("gabungan");
+  const W3 = duniaPool({ worker: konteksMl2, chat: () => new Response(JSON.stringify({ error: { code: 400, message: KONTEKS.replace("4096", "8192") } }), { status: 400 }) });
+  await A.putaran({ fetch: W3.f, pdfKeGambar: W3.pdfKeGambar });
+  assert.equal(W3.catat.simpan[0].p_hasil, "cek");
+  assert.match(W3.catat.simpan[0].p_ringkas, /P2 Siti Aminah: Gambar terlalu besar untuk dibaca model: cek manual/);
+
+  // Mode armada saja → langsung catatan cek.
+  mesin("armada");
+  const W4 = dunia({ worker: konteksMl2 });
+  await A.putaran({ fetch: W4.f, pdfKeGambar: W4.pdfKeGambar });
+  assert.equal(W4.catat.simpan[0].p_hasil, "cek");
+  assert.match(W4.catat.simpan[0].p_ringkas, /Gambar terlalu besar untuk dibaca model/);
+  assert.equal(W4.catat.model.filter((x) => JSON.stringify(x).includes(ML2)).length, 1);
+});
+
 console.log(`${lulus} uji agen AI lulus`);
 process.exit(0);

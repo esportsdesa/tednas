@@ -108,6 +108,8 @@ export function pdfKeGambar(buf) {
 }
 
 /* ── Worker AI ────────────────────────────────────────────────────────── */
+const KONTEKS_HABIS = /exceeds? the (available )?context|context size|context length/i;
+const GAMBAR_BESAR = "Gambar terlalu besar untuk dibaca model: cek manual.";
 const rehat = new Map(); // host → waktu boleh dipakai lagi
 const dipakai = new Map(); // host → jumlah permintaan agen yang sedang jalan
 
@@ -137,13 +139,15 @@ async function tanyaArmada({ prompt, format }, gambar, f) {
         messages: [{ role: "user", content: prompt, ...(gambar?.length ? { images: gambar.map((g) => g.toString("base64")) } : {}) }] }),
     });
     const j = await r.json();
-    if (!r.ok || j.error) throw new Error(j.error || `HTTP ${r.status}`);
+    if (!r.ok || j.error) throw new Error(j.error ? (typeof j.error === "string" ? j.error : JSON.stringify(j.error)) : `HTTP ${r.status}`);
     const h = JSON.parse(j.message.content);
     terpakai.add(CFG.model);
     return h;
   } catch (e) {
-    rehat.set(w.host, Date.now() + 5 * 60000);
-    throw new Error(`${w.nama}: ${e.message}`);
+    // Gambar melebihi konteks model (4096 token di worker, 17 Nov TED-00015): bukan salah worker, jangan diistirahatkan.
+    const konteks = KONTEKS_HABIS.test(e.message);
+    if (!konteks) rehat.set(w.host, Date.now() + 5 * 60000);
+    throw Object.assign(new Error(`${w.nama}: ${e.message}`), { konteks });
   } finally { dipakai.set(w.host, (dipakai.get(w.host) || 1) - 1); }
 }
 
@@ -209,6 +213,7 @@ async function tanyaPool({ prompt, format }, gambar, f) {
     const pesan = String(j?.error?.message || `HTTP ${r.status}`).slice(0, 160);
     // Gambar yang tak bisa dibuka model (mis. format aneh) = tetap: dicatat untuk admin, bukan dicoba ulang.
     if (r.status === 400 && /image|bitmap|media|decode/i.test(pesan)) throw Object.assign(new Error("Gambar tidak bisa dibuka model (format tidak didukung): cek manual."), { tetap: true });
+    if (KONTEKS_HABIS.test(pesan)) throw Object.assign(new Error(GAMBAR_BESAR), { tetap: true });
     throw new Error(pesan);
   }
   const h = JSON.parse(j.choices[0].message.content);
@@ -247,7 +252,12 @@ export async function tanyaModel(q, gambar, f = fetch, opsi = {}) {
       }
     }
     try { return await tanyaArmada(q, gambar, f); }
-    catch (e) { alasan = e.message; gagal++; }
+    catch (e) {
+      // Konteks 9b habis: worker lain sama saja, jadi jangan diulang. Mode gabungan membaca berkas ini dengan 35B
+      // (konteks pool 8192 per slot); mode armada mencatatnya untuk admin.
+      if (e.konteks) throw Object.assign(new Error(GAMBAR_BESAR), { tetap: true, besar: true });
+      alasan = e.message; gagal++;
+    }
   }
   throw new Error(`model gagal 4 kali (${alasan})`);
 }
@@ -277,15 +287,15 @@ async function berbarengan(tugas, n) {
 export const VERSI_LENGKAP = N.VERSI_AGEN * 10 + 1, VERSI_TUNDA = N.VERSI_AGEN * 10;
 const KOLOM_BUTIR = { identitas: "dokumen_path", profil_ml: "profil_ml_path", follow_esports: "follow_esports_path", follow_ppdt: "follow_ppdt_path", izin: "izin_path" };
 
-/** Berkas yang ditolak di tahap 9b dan layak dibaca ulang model besar: catatan "cek" atas BACAAN model (bukan
- *  berkas hilang, tidak diunggah, atau berkas kembar). */
+/** Berkas yang ditolak di tahap 9b dan layak dibaca ulang model besar: catatan "cek" atas BACAAN model, termasuk
+ *  gambar yang terlalu besar untuk konteks 9b (bukan berkas hilang, tidak diunggah, atau berkas kembar). */
 export function berkasUlang(t, n, baca, berkas) {
   const ulang = [];
   for (const p of n.rincian.pemain) {
     const kolom = new Set(p.butir.filter((b) => b.s === "cek" && !/^Berkas yang sama persis/.test(b.t)).map((b) => KOLOM_BUTIR[b.b]).filter(Boolean));
     for (const k of kolom) {
       const isi = baca[p.u]?.[KUNCI_BACA[k]];
-      if (isi && !isi.galat && berkas[p.u]?.[k]) ulang.push({ u: p.u, kolom: k });
+      if (isi && (!isi.galat || isi.besar) && berkas[p.u]?.[k]) ulang.push({ u: p.u, kolom: k });
     }
   }
   return ulang;
@@ -329,7 +339,10 @@ export async function periksaTim(t, alat = {}) {
   const gambarDari = async (b) => (b.gambar ??= b.mime === "application/pdf" ? await pdf(b.data) : [b.data]);
   const bacaSatu = async (u, kolom, m) => {
     try { baca[u][KUNCI_BACA[kolom]] = await tanyaModel(pertanyaan(kolom, pemain[u]), await gambarDari(berkas[u][kolom]), f, { mesin: m, tunggu: !(gabungan && m === "pool") }); }
-    catch (e) { if (e.fatal || e.poolTidakSiap) throw e; if (tetap(e)) baca[u][KUNCI_BACA[kolom]] = { galat: e.message }; else throw e; }
+    catch (e) {
+      if (e.fatal || e.poolTidakSiap) throw e;
+      if (tetap(e)) baca[u][KUNCI_BACA[kolom]] = { galat: e.message, ...(e.besar ? { besar: true } : {}) }; else throw e;
+    }
   };
   const jalankan = async (daftar, m) => {
     await berbarengan(daftar.map(({ u, kolom }) => async () => {
