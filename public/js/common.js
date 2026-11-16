@@ -13,7 +13,7 @@
       ' pukul ' + d.toLocaleTimeString('id-ID', { ...z, hour: '2-digit', minute: '2-digit' }).replace(':', '.') + ' WIB';
   };
   // Naikkan DATA_VERSI tiap public/data berubah, supaya browser tidak memakai salinan lama.
-  const DATA_VERSI = '2';
+  const DATA_VERSI = '3';
   U.jsonData = async (p) => { const r = await fetch(`${p}?v=${DATA_VERSI}`); if (!r.ok) throw new Error('Gagal memuat ' + p); return r.json(); };
   U.provinsi = () => U.jsonData('data/provinsi.json');
 

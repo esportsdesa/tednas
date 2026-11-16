@@ -60,4 +60,5 @@ Catatan:
 ## Data wilayah
 
 `public/data/` dibangkitkan dari cahyadsn/wilayah (Kepmendagri 300.2.2-2138 Tahun 2025):
-lalu disaring hanya desa di kabupaten: 37 provinsi (tanpa DKI Jakarta), 415 kabupaten, 74.446 desa. Kota dan kelurahan tidak bisa mendaftar.
+lalu disaring hanya desa: 37 provinsi (tanpa DKI Jakarta), 415 kabupaten + 19 kota yang punya desa, 75.266 desa
+(74.446 di kabupaten + 820 di kota, migrasi 11). Kelurahan tidak bisa mendaftar.

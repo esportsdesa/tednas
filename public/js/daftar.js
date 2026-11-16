@@ -72,7 +72,7 @@
 
   function isiUlasan() {
     const baris = [
-      ['Provinsi', teksPilihan(el.prov)], ['Kabupaten', teksPilihan(el.kab)],
+      ['Provinsi', teksPilihan(el.prov)], ['Kabupaten/Kota', teksPilihan(el.kab)],
       ['Desa', `${desaPilih[1]} (Kec. ${desaPilih[2]})`],
       ['Nama tim', $('#nama-tim').value.trim()], ['WhatsApp kapten', '+' + waNormal()],
       ...pemainAktif().map((i) => [labelPemain(i), `${namaPemain(i)} · ${pemain[i].jenis} + profil ML + 2 bukti follow IG${pemain[i].bawah17 ? ' + surat izin' : ''}`])
@@ -84,7 +84,7 @@
     if (langkah === 0 && !$('#setuju-aturan').checked) return 'Centang dulu kalau sudah membaca peraturannya.';
     if (langkah === 1) {
       if (!el.prov.value) return 'Pilih provinsi.';
-      if (!el.kab.value) return 'Pilih kabupaten.';
+      if (!el.kab.value) return 'Pilih kabupaten/kota.';
       if (!desaPilih) return 'Pilih dulu desa yang kamu wakili.';
     }
     if (langkah === 2) {
@@ -126,19 +126,19 @@
   }
 
   el.prov.onchange = async () => {
-    aturDesaKosong('Pilih kabupaten dulu');
+    aturDesaKosong('Pilih kabupaten/kota dulu');
     el.kab.disabled = true;
     el.kab.innerHTML = '<option value="">' + (el.prov.value ? 'Memuat...' : 'Pilih provinsi dulu') + '</option>';
     if (!el.prov.value) return;
     const asal = el.prov.value;
     const k = await U.jsonData(`data/kab/${asal}.json`);
     if (asal !== el.prov.value) return;
-    el.kab.innerHTML = '<option value="">Pilih kabupaten</option>' + k.map(([a, n]) => `<option value="${esc(a)}">${esc(n)}</option>`).join('');
+    el.kab.innerHTML = '<option value="">Pilih kabupaten/kota</option>' + k.map(([a, n]) => `<option value="${esc(a)}">${esc(n)}</option>`).join('');
     el.kab.disabled = false; el.kab.focus();
   };
 
   el.kab.onchange = async () => {
-    aturDesaKosong(el.kab.value ? 'Memuat daftar desa...' : 'Pilih kabupaten dulu');
+    aturDesaKosong(el.kab.value ? 'Memuat daftar desa...' : 'Pilih kabupaten/kota dulu');
     if (!el.kab.value) return;
     const asal = el.kab.value;
     try {
@@ -148,7 +148,7 @@
       el.cari.disabled = false; el.cari.placeholder = `Ketik nama desa (ada ${U.angka(d.length)})`;
       el.cari.setAttribute('aria-expanded', 'true');
       el.daftar.hidden = false; gambarDesa(); el.cari.focus();
-    } catch (e) { galat('Daftar desa gagal dimuat. Cek koneksi lalu pilih ulang kabupatennya.'); }
+    } catch (e) { galat('Daftar desa gagal dimuat. Cek koneksi lalu pilih ulang kabupaten/kotanya.'); }
   };
 
   /* Pencarian mengabaikan huruf besar, spasi, dan tanda hubung: "awang awang" menemukan "Awang-awang". */

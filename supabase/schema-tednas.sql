@@ -144,10 +144,10 @@ create policy pemain_admin on public.tednas_pemain for all to authenticated
   using (public.tednas_is_admin()) with check (public.tednas_is_admin());
 
 
--- Peserta hanya desa di kabupaten: DKI Jakarta (31), kota (kode 71 ke atas), dan kelurahan (awalan 1) ditolak.
+-- Peserta hanya desa (termasuk desa di wilayah kota): DKI Jakarta (31) dan kelurahan (awalan 1) ditolak.
 alter table public.tednas_tim drop constraint if exists tednas_tim_hanya_desa;
 alter table public.tednas_tim add constraint tednas_tim_hanya_desa check (
-  prov_kode <> '31' and substr(kab_kode, 4, 2)::int < 71 and substr(desa_kode, 10, 1) = '2');
+  prov_kode <> '31' and substr(desa_kode, 10, 1) = '2');
 
 -- ========== VIEW PUBLIK (tanpa WA, kapten, dan dokumen) ==========
 drop view if exists public.tednas_match_publik;
