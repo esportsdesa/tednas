@@ -318,6 +318,8 @@
       $('#form').hidden = true; $('#sukses').hidden = false;
       $('#kode').textContent = hasil.kode;
       $('#sukses-teks').textContent = `${$('#nama-tim').value.trim()}, wakil ${desaPilih[1]}, ${teksPilihan(el.kab)}.`;
+      const grup = (window.APP_CONFIG || {}).WA_GRUP;
+      if (grup) { $('#wa-grup-link').href = grup; $('#wa-grup').hidden = false; }
       window.scrollTo(0, 0);
     } catch (e) {
       const kunci = Object.keys(PESAN_GALAT).find((k) => String(e.message).includes(k));

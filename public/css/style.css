@@ -243,6 +243,10 @@ select:disabled, input:disabled { background: #eef1f8; color: #8a92aa; }
 .sukses { text-align: center; }
 .sukses img { width: 130px; margin: 0 auto 10px; }
 .kode-bukti { font: 400 64px/1 var(--judul); letter-spacing: .06em; color: var(--ungu); margin: 6px 0 12px; }
+.wa-grup { max-width: 520px; margin: 18px auto 0; padding: 16px 18px; border: 2px solid #25d366; border-radius: 6px; background: rgba(37, 211, 102, .08); }
+.wa-grup p { margin: 0 0 12px; font-size: 15px; }
+.btn-wa { background: #25d366; border-color: #25d366; color: #0b3d1e; font-size: 16px; }
+.btn-wa:hover, .btn-wa:focus-visible { background: #1ebe5a; border-color: #1ebe5a; color: #062a14; }
 .tutup-box { font-weight: 600; font-size: 17px; padding: 24px 0; text-align: center; }
 .tutup-box .bb-sisa { display: block; font: 400 56px/1.1 var(--judul); letter-spacing: .04em; color: var(--ungu); margin: 14px 0; }
 .tutup-box small { display: block; font-weight: 500; font-size: 14px; max-width: 520px; margin: 0 auto; }

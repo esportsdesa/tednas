@@ -45,7 +45,7 @@ const srv = createServer(async (req, res) => {
   if (u.pathname.startsWith("/sb/")) return supabase(req, res, u);
   if (u.pathname === "/js/config.js") {
     res.writeHead(200, { "content-type": "text/javascript" });
-    return res.end(`window.APP_CONFIG = { SUPABASE_URL: "http://${req.headers.host}/sb", SUPABASE_ANON_KEY: "uji", TURNSTILE_SITE_KEY: "1x00000000000000000000AA", DRIVE_URL: ${JSON.stringify(DRIVE_URL)} };`);
+    return res.end(`window.APP_CONFIG = { SUPABASE_URL: "http://${req.headers.host}/sb", SUPABASE_ANON_KEY: "uji", TURNSTILE_SITE_KEY: "1x00000000000000000000AA", DRIVE_URL: ${JSON.stringify(DRIVE_URL)}, WA_GRUP: ${JSON.stringify(WA_GRUP)} };`);
   }
   let p = normalize(decodeURIComponent(u.pathname)).replace(/^([/\\])+/, "");
   if (!p) p = "index.html";
@@ -150,12 +150,17 @@ async function isiFormulir({ tim, wa, awal, cadangan = false }) {
   await halaman.waitForFunction(() => document.querySelector("[name='cf-turnstile-response']")?.value, null, { timeout: 30000 });
 }
 
+// Link grup WhatsApp diambil dari config.js asli: uji ikut memastikan link-nya terisi.
+const WA_GRUP = /WA_GRUP: '([^']+)'/.exec(readFileSync(join(PUBLIK, "js/config.js"), "utf8"))[1];
+
 /* ── skenario ─────────────────────────────────────────────────────────── */
 await uji("pendaftaran lengkap: 21 berkas langsung ke Drive, 2 sekaligus, data seketika ke Sheet", async () => {
   await isiFormulir({ tim: "Garuda Mangliawan", wa: "081234567890", awal: "A" });
   await halaman.click("#lanjut");
   await halaman.waitForSelector("#sukses:not([hidden])", { timeout: 60000 });
   assert.equal(await halaman.textContent("#kode"), "TED-00001");
+  assert.ok(await halaman.isVisible("#wa-grup-link"), "tombol grup WhatsApp tampil setelah daftar");
+  assert.match(await halaman.getAttribute("#wa-grup-link", "href"), /^https:\/\/chat\.whatsapp\.com\/\w+/);
   assert.equal(unggahan, 21);
   assert.equal(puncak, 2, `unggahan bersamaan ${puncak}`);
   const t = W.db.tim[0];
