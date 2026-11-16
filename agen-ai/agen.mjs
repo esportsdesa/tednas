@@ -230,6 +230,7 @@ export async function tanyaModel(q, gambar, f = fetch) {
         catch (e) {
           if (e.tetap) throw e;
           alasan = `pool: ${e.message}`; gagal++;
+          log(`pool gagal menjawab (${gagal}/4): ${e.message}`);
           poolRehat = Date.now() + 60000 * TUNDA; pool.pada = 0;
           continue;
         }
