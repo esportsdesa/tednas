@@ -35,6 +35,12 @@ await uji("nama terdaftar vs nama di dokumen", () => {
   assert.equal(N.namaCocok("Budi Santoso", "BUDI"), true, "nama dokumen lebih pendek = bagian nama terdaftar");
   assert.equal(N.namaCocok("Andi", ""), false);
   assert.equal(N.namaCocok("Rudi Hartono", "BUDI HARTONO WIJAYA"), false, "Rudi ≠ Budi (kata 4 huruf harus persis)");
+  // inisial (hasil nyata pertama, 16 Nov)
+  assert.equal(N.namaCocok("Muhammad Alif A.", "MUHAMMAD ALIF AZIZI"), true, "inisial di nama terdaftar");
+  assert.equal(N.namaCocok("Muhammad Misbachul Umam", "MUHAMMAD MISBACHUL U."), true, "inisial di dokumen");
+  assert.equal(N.namaCocok("Nizam Fatih Abarra A.", "MUHAMMAD MISBACHUL U."), false);
+  assert.equal(N.namaCocok("A. B.", "ANDI BUDI"), false, "inisial saja tidak cukup");
+  assert.equal(N.namaCocok("Arya Rajasa D.", "SURYA NARENDRA S. B."), false);
 });
 
 await uji("umur per 15 Jan 2027, tanggal lahir dari NIK", () => {
@@ -222,7 +228,7 @@ await uji("agen: satu putaran → berkas lewat kunci AI, model langsung ke worke
   const kirim = JSON.stringify(s);
   for (const nik of NIK) assert.equal(kirim.includes(nik), false, "NIK asli tidak dikirim ke Supabase");
   assert.equal(s.p_identitas[0].nik, createHmac("sha256", KUNCI_AI).update("nik:" + NIK[0]).digest("hex").slice(0, 32));
-  assert.equal(s.p_identitas[0].sha.length, 4);
+  assert.equal(s.p_identitas[0].sha.length, 3, "sidik lintas tim hanya profil ML + 2 bukti follow, bukan foto identitas");
   assert.equal(s.p_model, `qwen3.5:9b · agen v${N.VERSI_AGEN}`);
   assert.equal(existsSync(join(BROKER, "want-heavy")), false, "mesin armada tidak meminta pool");
   assert.equal(await A.putaran({ fetch: W.f }), 0, "antrean kosong");

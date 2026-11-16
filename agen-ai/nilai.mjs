@@ -10,7 +10,9 @@ import { PROVINSI, KABKOTA } from "./wilayah.mjs";
 
 // v2 (16 Nov): identitas apa pun yang memuat nama & alamat (KTP/KK/KIA/kartu pelajar/suket/SIM/lain);
 // domisili = SATU PROVINSI dengan tim (bukan lagi sekabupaten); nama tim bebas (hanya dicek kepantasannya).
-export const VERSI_AGEN = 2;
+// v3 (16 Nov, dari hasil nyata pertama): satu foto berisi beberapa kartu → baca kartu orang itu saja; foto
+// identitas/izin yang sama untuk beberapa pemain BUKAN ganda (KK bersama, foto kartu sekelas); inisial nama diterima.
+export const VERSI_AGEN = 3;
 export const TANGGAL_ACUAN = "2027-01-15"; // Peraturan A: "Berusia 15–30 tahun per 15 Januari 2027"
 export const UMUR_MIN = 15, UMUR_MAKS = 30, UMUR_IZIN = 17;
 export const AKUN_IG = { follow_esports_path: "esportsdesa.official", follow_ppdt_path: "ditjen_ppdt" };
@@ -26,9 +28,10 @@ export function tanyaIdentitas(jenis, nama) {
     prompt: `Ini foto dokumen identitas seorang pendaftar turnamen esports desa. Pendaftar menyebutnya "${jenis}" atas nama "${nama}".
 Dokumen yang diterima: KTP, KK (Kartu Keluarga), KIA (Kartu Identitas Anak), Kartu Pelajar, Suket (surat keterangan domisili dari RT/RW/desa/kelurahan), SIM, atau dokumen identitas lain yang memuat nama dan alamat.
 Baca isinya PERSIS seperti tertulis, jangan menebak. Kosongkan isian yang tidak tertulis atau tidak terbaca.
+PENTING: foto bisa memuat lebih dari satu orang, misalnya beberapa kartu pelajar sekaligus atau KK dengan banyak anggota keluarga. Pilih SATU orang yang namanya paling mirip dengan "${nama}", lalu baca hanya data orang itu (dan dokumennya). Bila tidak ada yang mirip, kosongkan nama.
 - jenis_dokumen: KTP, KK, KIA, Kartu Pelajar, Suket, SIM, lain (identitas lain), bukan_identitas (bukan dokumen identitas sama sekali), atau tidak_terbaca.
 - terbaca: false bila foto buram atau terpotong sampai nama dan alamat tidak terbaca.
-- nama: nama orang pada dokumen. Untuk KK: nama anggota keluarga yang paling mirip dengan "${nama}" (kosong bila tidak ada yang mirip).
+- nama: nama orang itu, persis seperti tertulis (kosong bila tidak ada yang mirip dengan "${nama}").
 - nik: 16 digit NIK orang itu, tanpa spasi.
 - tanggal_lahir: tanggal lahir orang itu, format YYYY-MM-DD.
 - alamat_dari: "pemilik" bila dokumen memuat alamat tempat tinggal orang itu; "sekolah" bila hanya ada alamat sekolah (kartu pelajar); "tidak_ada" bila tidak ada alamat sama sekali.
@@ -108,23 +111,30 @@ const mirip = (a, b) => jarak(a, b) <= Math.min(toleransi(a), toleransi(b));
 const SINGKATAN = { M: "MUHAMMAD", MUH: "MUHAMMAD", MUHAMAD: "MUHAMMAD", MUHAMMAD: "MUHAMMAD", MOHAMMAD: "MUHAMMAD", MOHAMAD: "MUHAMMAD",
   MOCH: "MUHAMMAD", MOCHAMAD: "MUHAMMAD", MOCHAMMAD: "MUHAMMAD", MOH: "MUHAMMAD", MHD: "MUHAMMAD", MUHHAMAD: "MUHAMMAD", MOHD: "MUHAMMAD",
   AHMAD: "AHMAD", ACHMAD: "AHMAD", AHMAT: "AHMAD", ABD: "ABDUL", ABDUL: "ABDUL" };
-const kataNama = (s) => huruf(s).split(" ").filter(Boolean).map((k) => SINGKATAN[k] || k);
-const kataCocok = (a, b) => a === b || mirip(a, b) || (a.length >= 3 && b.length >= 3 && (a.startsWith(b) || b.startsWith(a)));
+// Tiap kata: r = apa adanya, m = setelah singkatan Muhammad/Ahmad/Abdul diseragamkan.
+const kataNama = (s) => huruf(s).split(" ").filter(Boolean).map((r) => ({ r, m: SINGKATAN[r] || r }));
+const kataCocok = (a, b) => a.m === b.m || mirip(a.m, b.m) || (a.m.length >= 3 && b.m.length >= 3 && (a.m.startsWith(b.m) || b.m.startsWith(a.m)))
+  // inisial: "Muhammad Alif A." = "MUHAMMAD ALIF AZIZI"
+  || (a.r.length === 1 && b.r.startsWith(a.r)) || (b.r.length === 1 && a.r.startsWith(b.r));
 
 /** Nama yang didaftarkan vs nama di dokumen. Cocok bila semua kata dari nama yang lebih pendek ada di yang lain
- *  (salah ketik kecil, singkatan Muhammad/M., dan nama panggilan yang merupakan bagian nama lengkap diterima). */
+ *  (salah ketik kecil, singkatan Muhammad/M., inisial, dan nama panggilan yang merupakan bagian nama lengkap
+ *  diterima). Minimal satu kata utuh (bukan inisial) harus cocok. */
 export function namaCocok(didaftar, diDokumen) {
   const a = kataNama(didaftar), b = kataNama(diDokumen);
   if (!a.length || !b.length) return false;
   const [pendek, panjang] = a.length <= b.length ? [a, b] : [b, a];
   const sisa = [...panjang];
+  let utuh = 0;
   for (const k of pendek) {
     const i = sisa.findIndex((x) => kataCocok(k, x));
     if (i < 0) return false;
+    if (k.r.length > 1 && sisa[i].r.length > 1) utuh++;
     sisa.splice(i, 1);
   }
+  if (!utuh) return false;
   // Satu kata pendek saja (mis. "Adi") baru cocok bila sama persis dengan salah satu kata nama dokumen.
-  if (pendek.length === 1 && pendek[0].length < 4) return panjang.includes(pendek[0]);
+  if (pendek.length === 1 && pendek[0].m.length < 4) return panjang.some((x) => x.m === pendek[0].m);
   return true;
 }
 
@@ -321,7 +331,9 @@ export function nilaiTim(tim, baca, namaTim, sha = {}) {
     for (const kol of dobel.values()) if (kol.length > 1) cek(kol[0].replace(/_path$/, ""), `Berkas yang sama persis diunggah untuk ${kol.map(labelKolom).join(" dan ")}.`);
 
     pemain.push({ u: p.urutan, nama: p.nama, butir, data: Object.fromEntries(Object.entries(data).filter(([k]) => !k.startsWith("_"))) });
-    identitas.push({ u: p.urutan, nik: data._nik || "", ml: data._ml || "", sha: [...new Set(Object.values(s).filter(Boolean))] });
+    // Ganda lintas pemain/tim hanya dari tangkapan layar milik pribadi (profil ML, bukti follow). Foto identitas &
+    // surat izin boleh sama: KK dipakai kakak-adik, atau satu foto berisi kartu pelajar seluruh tim.
+    identitas.push({ u: p.urutan, nik: data._nik || "", ml: data._ml || "", sha: [...new Set(SHA_LINTAS.map((k) => s[k]).filter(Boolean))] });
   }
 
   // Tim: nama bebas, hanya dicek kepantasannya (SARA/pornografi/politik praktis).
@@ -334,6 +346,8 @@ export function nilaiTim(tim, baca, namaTim, sha = {}) {
   const ringkas = hasil === "lolos" ? `Semua sesuai (${jmlBerkas} pemeriksaan).` : `${catatan.length} catatan: ${catatan.join(" · ")}`;
   return { hasil, ringkas: ringkas.slice(0, 500), rincian: { tim: timButir, pemain }, identitas };
 }
+
+const SHA_LINTAS = ["profil_ml_path", "follow_esports_path", "follow_ppdt_path"];
 
 export const labelKolom = (k) => ({ dokumen_path: "identitas", profil_ml_path: "profil ML", follow_esports_path: "follow @esportsdesa.official",
   follow_ppdt_path: "follow @ditjen_ppdt", izin_path: "surat izin" }[k] || k);
