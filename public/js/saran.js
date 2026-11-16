@@ -102,8 +102,12 @@
   /** Pesan WhatsApp untuk kapten. tim = baris tednas_tim (+pemain), ai = bentuk daftar() di atas. */
   function pesanWa({ tim, ai, tautan, grup }) {
     const baris = [`Halo Kak ${tim.nama_kapten}, kapten tim *${tim.nama_tim}* (${tim.kode}), Desa ${tim.desa}.`, ''];
+    // Tim terverifikasi (user 17 Nov): isinya ajakan masuk grup peserta.
     if (tim.status === 'terverifikasi') {
-      baris.push('Pendaftaran tim kakak di Turnamen Esports Desa Nasional 2027 sudah *TERVERIFIKASI*. Terima kasih!');
+      baris.push('Tim kakak sudah *TERVERIFIKASI* di Turnamen Esports Desa Nasional 2027.');
+      if (grup) baris.push('', 'Ajak semua pemain masuk grup WhatsApp peserta. Jadwal dan pengumuman turnamen dikirim di sana:', grup);
+      baris.push('', 'Panitia TEDNas 2027');
+      return baris.join('\n');
     } else {
       const d = daftar(ai, tim.pemain);
       baris.push('Terima kasih sudah mendaftar Turnamen Esports Desa Nasional 2027.');

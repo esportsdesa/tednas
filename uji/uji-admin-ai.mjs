@@ -46,7 +46,7 @@ const srv = createServer(async (req, res) => {
   if (req.method === "OPTIONS") { res.writeHead(204, { "access-control-allow-origin": "*", "access-control-allow-headers": "*", "access-control-allow-methods": "*", "access-control-expose-headers": "content-range" }); return res.end(); }
   if (u.pathname === "/js/config.js") {
     res.writeHead(200, { "content-type": "text/javascript" });
-    return res.end(`window.APP_CONFIG = { SUPABASE_URL: "http://${req.headers.host}/sb", SUPABASE_ANON_KEY: "uji", TURNSTILE_SITE_KEY: "x", DRIVE_URL: "https://script.google.com/macros/s/AKfycbADMINuji0123456789abcdefgh/exec" };`);
+    return res.end(`window.APP_CONFIG = { SUPABASE_URL: "http://${req.headers.host}/sb", SUPABASE_ANON_KEY: "uji", TURNSTILE_SITE_KEY: "x", DRIVE_URL: "https://script.google.com/macros/s/AKfycbADMINuji0123456789abcdefgh/exec", WA_GRUP: "https://chat.whatsapp.com/UjiGrup" };`);
   }
   if (u.pathname.startsWith("/sb/")) {
     const p = u.pathname.slice(3), q = decodeURIComponent(u.search);
@@ -169,11 +169,14 @@ await uji("WA Kapten: satu klik → WhatsApp terbuka dengan daftar perbaikan per
   assert.ok(teks.includes('*Pemain 3: Pemain 23*\n• @ditjen_ppdt belum di-follow (tombolnya masih "Ikuti")'), teks);
   assert.doesNotMatch(teks, /TED-00001|TED-00003|satu provinsi|Pemain 4:/, "tanpa kode tim lain, catatan info, atau ganda yang daftar belakangan");
   assert.ok(teks.includes(`${ASAL}/perbaiki.html#TED-00002.${TOKEN}`), "tautan perbaikan khusus tim");
-  assert.ok(teks.endsWith("Kalau semuanya sesuai, tim langsung terverifikasi.\n\nPanitia TEDNas 2027"), teks);
+  assert.ok(teks.endsWith("Kalau semuanya sesuai, tim langsung terverifikasi.\n\nGabung grup WhatsApp peserta untuk info jadwal: https://chat.whatsapp.com/UjiGrup\n\nPanitia TEDNas 2027"), teks);
 
+  // Tim terverifikasi: isinya ajakan masuk grup peserta (user 17 Nov), tanpa tautan perbaikan.
   const u2 = await buka("00000000-0000-0000-0000-000000000001");
-  assert.ok(u2.searchParams.get("text").includes("sudah *TERVERIFIKASI*"));
-  assert.ok(!u2.searchParams.get("text").includes("perbaiki.html"));
+  assert.equal(u2.searchParams.get("text"), "Halo Kak Kapten 1, kapten tim *Tim Desa 1* (TED-00001), Desa Desa 1.\n\n"
+    + "Tim kakak sudah *TERVERIFIKASI* di Turnamen Esports Desa Nasional 2027.\n\n"
+    + "Ajak semua pemain masuk grup WhatsApp peserta. Jadwal dan pengumuman turnamen dikirim di sana:\nhttps://chat.whatsapp.com/UjiGrup\n\n"
+    + "Panitia TEDNas 2027");
   assert.equal(catat.kabari.length, 2);
 });
 
