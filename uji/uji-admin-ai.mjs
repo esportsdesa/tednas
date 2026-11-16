@@ -30,7 +30,7 @@ const AI_LOLOS = { tim_id: "x", akhir: "lolos", hasil: "lolos", ringkas: "Semua 
   rincian: { tim: [], pemain: [1, 2, 3, 4, 5].map((u) => ({ u, nama: `Pemain 1${u}`, butir: [ok("KTP sesuai, umur 20."), ok("x"), ok("y"), ok("z")], data: { dok: "KTP", nik: "3507********000" + u, lahir: "2006-05-05", umur: 20, alamat: "MANGLIAWAN, PAKIS, KABUPATEN MALANG", ml: "48291375" + u + " (12045)" } })) } };
 const AI_CEK = { ...AI_LOLOS, akhir: "cek", hasil: "lolos", ringkas: "1 catatan",
   ganda: [{ u: 2, jenis: "nik", kode: "TED-00001", u_lain: 1, dulu: true }, { u: 4, jenis: "ml", kode: "TED-00003", u_lain: 2, dulu: false }],
-  rincian: { tim: [],
+  rincian: { tim: [], tunggu: 2,
     pemain: [1, 2, 3, 4, 5].map((u) => ({ u, nama: `Pemain 2${u}`, butir: u === 3 ? [ok("KTP sesuai, umur 19."), { b: "follow_ppdt", s: "cek", t: "Bukti follow menunjukkan @ditjen_ppdt BELUM diikuti (tombol \"Ikuti\")." }, { b: "identitas", s: "info", t: "Domisili di Kota Malang, tim di Kabupaten Malang (masih satu provinsi)." }] : [ok("a"), ok("b")], data: { dok: "KTP", nik: "3507********0003", lahir: "2007-01-01", umur: 20, alamat: "SUMBERPASIR, PAKIS, KABUPATEN MALANG" } })) } };
 
 let dunia = "ai"; // "ai" | "tanpa-ai"
@@ -105,7 +105,8 @@ await uji("kolom Cek AI + ringkasan status otomatis + tanda '· AI', tanpa tombo
   await buka();
   await halaman.waitForSelector("#t-ai-bar:not([hidden])");
   assert.equal(await halaman.isVisible("#t-kol-ai"), true);
-  const sel = await halaman.$$eval("#t-baris tr", (r) => r.map((x) => x.children[6].textContent.trim()));
+  const sel = await halaman.$$eval("#t-baris tr", (r) => r.map((x) => x.children[6].querySelector("button, span").textContent.trim()));
+  assert.equal((await halaman.textContent("#t-baris tr:nth-child(2) .ai-tunggu")).trim(), "2 berkas dicek ulang", "tim yang menunggu model besar");
   assert.deepEqual(sel, ["Antre", "Perlu dicek · 2", "✓ Lolos AI"], "ganda yang daftar belakangan tidak dihitung");
   const status = await halaman.$$eval("#t-baris tr", (r) => r.map((x) => x.children[5].textContent.trim()));
   assert.deepEqual(status, ["Menunggu", "Menunggu", "Terverifikasi · AI"]);
@@ -119,6 +120,7 @@ await uji("rincian AI per pemain: catatan cek, info, ganda NIK, data tersamar", 
   await halaman.waitForSelector("#d-pemain[open]");
   const kotak = await halaman.textContent("#d-pemain-ai");
   assert.match(kotak, /Perlu dicek: 2 catatan AI/);
+  assert.match(kotak, /2 berkas yang ditolak model cepat \(qwen3\.5:9b\) menunggu dibaca ulang model besar/);
   assert.match(kotak, /otomatis Terverifikasi; catatan "perlu dicek" diputuskan admin/);
   const isi = await halaman.textContent("#d-pemain-isi");
   assert.match(isi, /NIK sama dengan TED-00001 pemain 1, yang mendaftar lebih dulu\. 1 orang hanya boleh di 1 tim\./);

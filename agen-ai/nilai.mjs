@@ -15,7 +15,9 @@ import { PROVINSI, KABKOTA } from "./wilayah.mjs";
 // v4 (16 Nov malam): bukti follow dinilai dari tombol utama profil (abu = sudah); AI sempat terkecoh tombol biru
 // "Ikuti" di kartu "Disarankan untuk Anda" (10 tim tertandai keliru). Satu screenshot follow kapten untuk seluruh
 // tim dianggap cukup (user: "cukup"); screenshot yang sama di tim LAIN tetap ganda.
-export const VERSI_AGEN = 4;
+// v5 (16 Nov malam, user "setuju pake gabungan"): mode gabungan di agen.mjs (9b armada dulu, 35B pool untuk berkas
+// yang ditolak 9b). Aturan penilaian sama dengan v4.
+export const VERSI_AGEN = 5;
 export const TANGGAL_ACUAN = "2027-01-15"; // Peraturan A: "Berusia 15–30 tahun per 15 Januari 2027"
 export const UMUR_MIN = 15, UMUR_MAKS = 30, UMUR_IZIN = 17;
 export const AKUN_IG = { follow_esports_path: "esportsdesa.official", follow_ppdt_path: "ditjen_ppdt" };

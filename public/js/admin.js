@@ -80,7 +80,9 @@
     if (!a) return '<td><span class="lencana ai-belum" title="Agen AI memeriksa tim ini dalam beberapa menit">Antre</span></td>';
     if (a.akhir === 'galat') return `<td><span class="lencana ai-belum" title="${esc(a.ringkas)}">Diulang</span></td>`;
     if (a.akhir === 'lolos') return `<td><button class="lencana-ai ai-lolos" data-pemain="${id}">✓ Lolos AI</button></td>`;
-    return `<td><button class="lencana-ai ai-cek" data-pemain="${id}">Perlu dicek · ${jumlahCekAi(a)}</button></td>`;
+    const tunggu = a.rincian && a.rincian.tunggu;
+    return `<td><button class="lencana-ai ai-cek" data-pemain="${id}">Perlu dicek · ${jumlahCekAi(a)}</button>`
+      + (tunggu ? `<small class="ai-tunggu" title="Berkas yang ditolak model cepat sedang menunggu dibaca ulang model besar (pool GPU). Hasil bisa berubah.">${tunggu} berkas dicek ulang</small>` : '') + '</td>';
   }
 
   function aiTim(t) {
@@ -91,6 +93,7 @@
     const judul = a.akhir === 'lolos' ? '✓ Lolos semua pemeriksaan AI' : a.akhir === 'galat' ? 'Pemeriksaan AI belum selesai' : `Perlu dicek: ${jumlahCekAi(a)} catatan AI`;
     return `<div class="ai-kotak ai-${esc(a.akhir)}"><b>${judul}</b>`
       + (a.akhir === 'galat' ? `<small>${esc(a.ringkas)}</small>` : '')
+      + (a.rincian && a.rincian.tunggu ? `<small class="ai-tunggu">${esc(a.rincian.tunggu)} berkas yang ditolak model cepat (qwen3.5:9b) menunggu dibaca ulang model besar (Qwen3.6-35B di pool GPU). Hasil bisa berubah, dan tim langsung Terverifikasi bila semuanya ternyata sesuai.</small>` : '')
       + (timCek.length ? `<ul>${timCek.map((b) => `<li class="ai-cek">${esc(b.t)}</li>`).join('')}</ul>` : '')
       + `<small>Diperiksa ${esc(U.waktu(a.pada))} · ${esc(a.model)}. Lolos semua pemeriksaan = otomatis Terverifikasi; catatan "perlu dicek" diputuskan admin.</small></div>`;
   }

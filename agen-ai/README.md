@@ -33,10 +33,30 @@ Hasil per tim:
 - **Diulang**: berkas belum bisa diambil atau model belum menjawab. Status tidak berubah. Agen mencoba lagi setelah
   30 menit.
 
-## Model: pool GPU gabungan
+## Model: gabungan (bawaan sejak 16 Nov malam)
 
-Bawaan (`TEDNAS_MESIN=pool`): **Qwen3.6-35B-A3B** di pool GPU gabungan Gambir (beberapa PC billing yang
-menganggur, dikelola broker `/home/jot/rpc-broker` di dapur). Cara kerjanya sama dengan Kawan Bicara:
+`TEDNAS_MESIN=gabungan`. Dua model dipakai berurutan.
+
+1. **qwen3.5:9b di armada worker** membaca semua berkas, sekitar 1 menit per tim. Model ini selalu tersedia, dan
+   permintaannya dikirim langsung ke worker yang hangat, tidak lewat LB.
+2. Berkas yang **ditolak** 9b dibaca ulang **Qwen3.6-35B-A3B di pool GPU**, dan jawaban 35B yang dipakai. Yang
+   dibaca ulang hanya catatan atas bacaan model. Berkas hilang, berkas yang tidak diunggah, atau berkas kembar tidak
+   ikut dibaca ulang.
+   - Uji A/B 16 Nov di 3 tim nyata: identitas sebanding, tetapi 9b gagal membaca ID Mobile Legends 8 dari 10,
+     padahal 35B membaca semuanya.
+3. Kalau pool belum siap (atau gagal di tengah), hasil 9b disimpan sebagai "Perlu dicek" dengan
+   `rincian.tunggu = n`. Ringkasannya diawali "Menunggu cek ulang model besar …", dan di admin tertulis "n berkas
+   dicek ulang". Agen lalu meminta pool ke broker. Begitu pool siap, tim itu diambil lagi dan dituntaskan, dan
+   langsung Terverifikasi bila semuanya ternyata sesuai.
+   - Penandanya `tednas_ai.versi`, tanpa perubahan database: `VERSI_AGEN×10+1` = tuntas, `VERSI_AGEN×10` = tunda.
+   - Selagi pool belum siap, antrean diminta dengan versi tunda, jadi tim tunda tidak diambil berulang.
+
+Mode lain: `pool` (hanya 35B, menunggu pool), `pool+armada`, `armada` (hanya 9b).
+
+### Pool GPU
+
+Qwen3.6-35B-A3B berjalan di pool GPU gabungan Gambir: beberapa PC billing yang menganggur, dikelola broker
+`/home/jot/rpc-broker` di dapur. Cara kerjanya sama dengan Kawan Bicara:
 
 - Selama ada antrean, agen menyalakan `want-heavy` dan memperbarui `last-request`. Broker lalu merakit pool begitu
   cukup PC menganggur, dan membongkarnya 15 menit setelah antrean habis.
@@ -44,11 +64,9 @@ menganggur, dikelola broker `/home/jot/rpc-broker` di dapur). Cara kerjanya sama
 - Pool baru dianggap siap bila `/props` menyatakan `modalities.vision`. Artinya llama-server dinyalakan dengan
   `--mmproj` (modul penglihatan `mmproj-Qwen_Qwen3.6-35B-A3B-f16.gguf` di kepala, ditambahkan ke
   `head-serve-dyn.ps1` pada 16 Nov). Encoder gambar berjalan di CPU kepala supaya tidak menambah VRAM PC billing.
-- Pool belum siap = agen menunggu. Teruji 16 Nov: 13–40 detik per gambar, jadi sekitar 3–5 menit per tim.
-
-Pilihan lain: `TEDNAS_MESIN=pool+armada` memakai qwen3.5:9b di armada worker selagi pool belum siap. `armada`
-hanya memakai 9b, langsung ke worker yang hangat dan **tidak** lewat LB, karena LB jatuh ke Ollama dapur yang RAM-nya
-tipis.
+- Laju: 35–50 detik per gambar (prompt eval ±19 token/detik lewat RPC). Gambar dikirim satu per satu
+  (`TEDNAS_POOL_PARALEL=1`), karena dua gambar sekaligus sempat membuat rpc-server anggota crash.
+- Kalau kepala pool mati, broker membongkar dan merakit ulang otomatis.
 
 ## Cara kerja
 

@@ -369,6 +369,8 @@ dialog h3 { color: var(--ungu-tua); margin-bottom: 8px; font-size: 18px; font-we
 .ai-kotak.ai-lolos { border-color: var(--hijau); }
 .ai-kotak.ai-cek { border-color: #d39b00; background: #fffaeb; }
 .ai-kotak small { display: block; color: var(--teks-2); font-size: 12px; margin-top: 4px; }
+td small.ai-tunggu { display: block; margin-top: 4px; font-size: 11.5px; color: var(--teks-2); white-space: nowrap; }
+.ai-kotak small.ai-tunggu { color: #8a5a00; }
 .ai-kotak ul, .ai-pemain ul { margin: 4px 0 0; padding-left: 18px; }
 .ai-pemain { flex-basis: 100%; font-size: 13px; }
 .ai-pemain small { display: block; color: var(--teks-2); overflow-wrap: anywhere; }

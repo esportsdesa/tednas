@@ -212,6 +212,7 @@ function dunia({ tim = TIM, ubah = () => {}, webApp = null, worker = null } = {}
     const isi = opt.body ? JSON.parse(opt.body) : null;
     if (url === "https://sb.tiruan/rest/v1/rpc/tednas_ai_antre") {
       assert.equal(isi.p_kunci, KUNCI_AI); assert.equal(opt.headers.apikey, "sb_publishable_uji");
+      (catat.antre ||= []).push(isi.p_versi);
       return jawab({ tim: antre.slice(0, isi.p_batas), sisa: antre.length });
     }
     if (url === "https://sb.tiruan/rest/v1/rpc/tednas_ai_simpan") { catat.simpan.push(isi); antre = []; return jawab({ ok: true, akhir: isi.p_hasil, ganda: [], terkait: 0 }); }
@@ -250,7 +251,7 @@ await uji("agen: satu putaran → berkas lewat kunci AI, model langsung ke worke
   assert.equal(W.catat.simpan.length, 1);
   const s = W.catat.simpan[0];
   assert.equal(s.p_hasil, "lolos", s.p_ringkas);
-  assert.equal(s.p_tim, TIM.id); assert.equal(s.p_sidik, TIM.sidik); assert.equal(s.p_versi, N.VERSI_AGEN);
+  assert.equal(s.p_tim, TIM.id); assert.equal(s.p_sidik, TIM.sidik); assert.equal(s.p_versi, A.VERSI_LENGKAP);
   assert.equal(W.catat.webapp.length, 20, "5 pemain × 4 berkas");
   assert.ok(W.catat.webapp.every((x) => x.aksi === "berkas" && x.kunci_ai === KUNCI_AI && !x.token));
   assert.equal(W.catat.model.length, 21, "20 berkas + 1 nama tim");
@@ -374,7 +375,7 @@ await uji("pool: tanpa mmproj = belum siap (pool+armada pakai 9b); gambar tak te
   assert.equal(W1.catat.model.length, 21); assert.equal(W1.catat.simpan[0].p_hasil, "lolos");
 
   mesin("pool");
-  const W2 = duniaPool({ chat: (isi) => (JSON.stringify(isi).includes(Buffer.from("BERKAS|gdrive/PROFILML-2").toString("base64").slice(0, 20))
+  const W2 = duniaPool({ chat: (isi) => (JSON.stringify(isi).includes(Buffer.from("BERKAS|gdrive/PROFILML-20000.png").toString("base64"))
     ? new Response(JSON.stringify({ error: { code: 400, message: "failed to load image or audio file" } }), { status: 400 }) : null) });
   await A.putaran({ fetch: W2.f, pdfKeGambar: W2.pdfKeGambar });
   assert.equal(W2.catat.simpan[0].p_hasil, "cek");
@@ -401,6 +402,63 @@ await uji("pool: belum dirakit → agen menunggu sambil meminta pool, lanjut beg
   assert.equal(dimintaDulu, true, "want-heavy dinyalakan selagi menunggu");
   assert.equal(W.catat.simpan[0].p_hasil, "lolos", W.catat.simpan[0].p_ringkas);
   assert.equal(W.catat.pool.length, 21);
+});
+
+/* ── gabungan (bawaan produksi sejak 16 Nov malam): 9b armada dulu, 35B pool untuk yang ditolak 9b ── */
+const tolakMl2 = (host, isi) => (JSON.stringify(isi).includes(Buffer.from("BERKAS|gdrive/PROFILML-20000.png").toString("base64"))
+  ? new Response(JSON.stringify({ message: { content: JSON.stringify({ profil_mlbb: true, nickname: "x", id_akun: "", server: "" }) } })) : null);
+
+await uji("gabungan: semua sesuai di 9b → selesai tanpa pool", async () => {
+  mesin("gabungan");
+  const W = duniaPool();
+  await A.putaran({ fetch: W.f, pdfKeGambar: W.pdfKeGambar });
+  const s = W.catat.simpan[0];
+  assert.equal(s.p_hasil, "lolos", s.p_ringkas);
+  assert.equal(s.p_versi, A.VERSI_LENGKAP);
+  assert.equal(W.catat.model.length, 21, "semua lewat armada"); assert.equal(W.catat.pool.length, 0, "pool tidak dipakai");
+  assert.equal(s.p_model, `qwen3.5:9b · agen v${N.VERSI_AGEN}`);
+  assert.deepEqual(W.catat.antre, [A.VERSI_LENGKAP], "pool siap → antrean versi lengkap");
+});
+
+await uji("gabungan: 9b gagal baca ID ML → hanya berkas itu dibaca ulang 35B, jawaban 35B dipakai", async () => {
+  mesin("gabungan");
+  const W = duniaPool({ worker: tolakMl2 });
+  await A.putaran({ fetch: W.f, pdfKeGambar: W.pdfKeGambar });
+  const s = W.catat.simpan[0];
+  assert.equal(s.p_hasil, "lolos", s.p_ringkas);
+  assert.equal(s.p_versi, A.VERSI_LENGKAP);
+  assert.equal(W.catat.pool.length, 1, "satu berkas ke pool");
+  assert.match(JSON.stringify(W.catat.pool[0]), new RegExp(Buffer.from("BERKAS|gdrive/PROFILML-20000.png").toString("base64").replace(/[+/]/g, "\\$&")));
+  assert.equal(s.p_model, `qwen3.5:9b + Qwen3.6-35B-A3B (pool GPU) · agen v${N.VERSI_AGEN}`);
+  assert.equal(s.p_identitas[1].ml, "482913751(12045)", "ID ML dari bacaan 35B");
+});
+
+await uji("gabungan: pool belum siap → hasil 9b disimpan 'menunggu cek ulang' (versi tunda), pool diminta, tim tunda tak diambil", async () => {
+  mesin("gabungan");
+  const W = duniaPool({ worker: tolakMl2 });
+  rmSync(join(BROKER, "pool-head.txt"));
+  await A.putaran({ fetch: W.f, pdfKeGambar: W.pdfKeGambar });
+  const s = W.catat.simpan[0];
+  assert.equal(s.p_hasil, "cek"); assert.equal(s.p_versi, A.VERSI_TUNDA);
+  assert.match(s.p_ringkas, /^Menunggu cek ulang model besar untuk 1 berkas\. 1 catatan: P2 Siti Aminah: ID akun Mobile Legends tidak terlihat/);
+  assert.equal(s.p_rincian.tunggu, 1);
+  assert.equal(W.catat.pool.length, 0);
+  assert.ok(existsSync(join(BROKER, "want-heavy")), "pool diminta");
+  assert.deepEqual(W.catat.antre, [A.VERSI_TUNDA], "pool belum siap → antrean versi tunda");
+  // antrean kosong selagi pool belum siap: cek apakah ada tim tunda → minta pool
+  rmSync(join(BROKER, "want-heavy"));
+  W.catat.antre = [];
+  assert.equal(await A.putaran({ fetch: W.f }), 0);
+  assert.deepEqual(W.catat.antre, [A.VERSI_TUNDA, A.VERSI_LENGKAP]);
+});
+
+await uji("gabungan: pool gagal di tengah tahap 35B → tetap disimpan 'menunggu', tidak galat", async () => {
+  mesin("gabungan");
+  const W = duniaPool({ worker: tolakMl2, chat: () => new Response(JSON.stringify({ error: { message: "Remote RPC server crashed" } }), { status: 500 }) });
+  await A.putaran({ fetch: W.f, pdfKeGambar: W.pdfKeGambar });
+  const s = W.catat.simpan[0];
+  assert.equal(s.p_hasil, "cek"); assert.equal(s.p_versi, A.VERSI_TUNDA);
+  assert.equal(W.catat.pool.length, 1, "sekali coba lalu ditunda (tidak menahan antrean)");
 });
 
 console.log(`${lulus} uji agen AI lulus`);

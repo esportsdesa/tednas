@@ -43,7 +43,7 @@ export const CFG = {
   sbKunci: E.TEDNAS_SUPABASE_KUNCI_PUBLIK || "",
   drive: E.TEDNAS_DRIVE_URL || "",
   kunci: E.TEDNAS_AI_KUNCI || "",
-  mesin: ["pool", "pool+armada", "armada"].includes(E.TEDNAS_MESIN) ? E.TEDNAS_MESIN : "pool",
+  mesin: ["gabungan", "pool", "pool+armada", "armada"].includes(E.TEDNAS_MESIN) ? E.TEDNAS_MESIN : "gabungan",
   poolDir: E.TEDNAS_POOL_DIR || "/home/jot/rpc-broker",
   poolModel: (E.TEDNAS_POOL_MODEL || "35B").split(",").map((s) => s.trim()).filter(Boolean),
   poolParalel: Math.max(1, Math.min(4, Number(E.TEDNAS_POOL_PARALEL) || 2)),
@@ -218,13 +218,17 @@ async function tanyaPool({ prompt, format }, gambar, f) {
 
 const statusBroker = () => bacaPool("status.txt").replace(/^\S+ \S+ \| /, "").slice(0, 120);
 
-/** Satu pertanyaan + gambar → objek JSON sesuai skema. Pool dulu (menunggu bila belum siap), lalu armada sesuai TEDNAS_MESIN. */
-export async function tanyaModel(q, gambar, f = fetch) {
+/** Satu pertanyaan + gambar → objek JSON sesuai skema.
+ *  opsi.mesin: "pool" (menunggu pool), "pool+armada", atau "armada"; bawaan TEDNAS_MESIN (gabungan → armada).
+ *  opsi.tunggu = false: pool belum siap / gagal → langsung lempar galat { poolTidakSiap } (dipakai mode gabungan). */
+export async function tanyaModel(q, gambar, f = fetch, opsi = {}) {
+  const mesin = opsi.mesin || (CFG.mesin === "gabungan" ? "armada" : CFG.mesin), boleh = opsi.tunggu !== false;
   let alasan = "", tunggu = 0;
   for (let gagal = 0; gagal < 4;) {
-    if (CFG.mesin !== "armada") {
+    if (mesin !== "armada") {
       mintaPool();
       const p = await cekPool(f);
+      if (!p.siap && !boleh) throw Object.assign(new Error(`pool GPU belum siap: ${p.alasan}`), { poolTidakSiap: true });
       if (p.siap) {
         try { return await tanyaPool(q, gambar, f); }
         catch (e) {
@@ -232,10 +236,11 @@ export async function tanyaModel(q, gambar, f = fetch) {
           alasan = `pool: ${e.message}`; gagal++;
           log(`pool gagal menjawab (${gagal}/4): ${e.message}`);
           poolRehat = Date.now() + 60000 * TUNDA; pool.pada = 0;
+          if (!boleh) throw Object.assign(new Error(alasan), { poolTidakSiap: true });
           continue;
         }
       }
-      if (CFG.mesin === "pool") {
+      if (mesin === "pool") {
         if (tunggu++ % 20 === 0) log(`menunggu pool GPU: ${p.alasan}${statusBroker() ? ` · broker: ${statusBroker()}` : ""}`);
         await tidur(30000);
         continue;
@@ -265,77 +270,129 @@ async function berbarengan(tugas, n) {
   return hasil;
 }
 
+/* Versi yang disimpan di tednas_ai.versi (tanpa ubah database):
+ *  VERSI_LENGKAP = pemeriksaan tuntas; VERSI_TUNDA = mode gabungan, ada berkas yang ditolak 9b tetapi pool GPU belum
+ *  siap untuk membacanya ulang. Antrean diminta dengan VERSI_TUNDA selagi pool belum siap (tim tunda tidak diambil),
+ *  dan dengan VERSI_LENGKAP begitu pool siap (tim tunda ikut diambil lagi, lalu dituntaskan). */
+export const VERSI_LENGKAP = N.VERSI_AGEN * 10 + 1, VERSI_TUNDA = N.VERSI_AGEN * 10;
+const KOLOM_BUTIR = { identitas: "dokumen_path", profil_ml: "profil_ml_path", follow_esports: "follow_esports_path", follow_ppdt: "follow_ppdt_path", izin: "izin_path" };
+
+/** Berkas yang ditolak di tahap 9b dan layak dibaca ulang model besar: catatan "cek" atas BACAAN model (bukan
+ *  berkas hilang, tidak diunggah, atau berkas kembar). */
+export function berkasUlang(t, n, baca, berkas) {
+  const ulang = [];
+  for (const p of n.rincian.pemain) {
+    const kolom = new Set(p.butir.filter((b) => b.s === "cek" && !/^Berkas yang sama persis/.test(b.t)).map((b) => KOLOM_BUTIR[b.b]).filter(Boolean));
+    for (const k of kolom) {
+      const isi = baca[p.u]?.[KUNCI_BACA[k]];
+      if (isi && !isi.galat && berkas[p.u]?.[k]) ulang.push({ u: p.u, kolom: k });
+    }
+  }
+  return ulang;
+}
+
 export async function periksaTim(t, alat = {}) {
   const f = alat.fetch || fetch, pdf = alat.pdfKeGambar || pdfKeGambar;
   const mulai = Date.now();
-  const baca = {}, sha = {};
+  const baca = {}, sha = {}, berkas = {}; // berkas[u][kolom] = gambar (dipakai lagi di tahap 35B, hanya di memori)
   let sementara = null; // galat yang layak dicoba lagi (Web App / model)
   terpakai.clear();
-  if (CFG.mesin !== "armada") await cekPool(f);
-  const paralel = () => (CFG.mesin === "armada" || (CFG.mesin === "pool+armada" && !pool.siap) ? CFG.paralel : Math.min(CFG.poolParalel, pool.slot));
+  const gabungan = CFG.mesin === "gabungan", mesinA = gabungan ? "armada" : CFG.mesin;
+  if (mesinA !== "armada") await cekPool(f);
+  const paralel = (m) => (m === "armada" || (m === "pool+armada" && !pool.siap) ? CFG.paralel : Math.min(CFG.poolParalel, pool.slot));
   const tetap = (e) => /^PDF tidak bisa dibuka/.test(e.message) || e.tetap;
+  const pemain = Object.fromEntries((t.pemain || []).map((p) => [p.urutan, p]));
+  const umur = (u) => N.umurPada(N.lahirIdentitas(baca[u].identitas));
 
-  const tugas = [];
+  // 1. Ambil semua berkas (Web App Drive).
+  const ambil = [];
   for (const p of t.pemain || []) {
-    baca[p.urutan] = {}; sha[p.urutan] = {};
+    baca[p.urutan] = {}; sha[p.urutan] = {}; berkas[p.urutan] = {};
     for (const kolom of KOLOM) {
       if (!p[kolom]) continue;
-      tugas.push(async () => {
-        const kunci = KUNCI_BACA[kolom];
+      ambil.push(async () => {
         try {
           const b = await ambilBerkas(p[kolom], f);
-          if (b.tetap) { baca[p.urutan][kunci] = { galat: b.tetap }; return; }
+          if (b.tetap) { baca[p.urutan][KUNCI_BACA[kolom]] = { galat: b.tetap }; return; }
           sha[p.urutan][kolom] = createHash("sha256").update(b.data).digest("hex").slice(0, 32);
-          // Surat izin hanya dibaca bila pemain di bawah 17 tahun — diputuskan setelah identitas terbaca (di bawah).
-          if (kolom === "izin_path") { baca[p.urutan]._izin = b; return; }
-          const gambar = b.mime === "application/pdf" ? await pdf(b.data) : [b.data];
-          baca[p.urutan][kunci] = await tanyaModel(pertanyaan(kolom, p), gambar, f);
+          berkas[p.urutan][kolom] = b; // PDF baru diubah ke gambar saat memang dibaca model (izin pemain dewasa tidak)
         } catch (e) {
           if (e.fatal) throw e;
-          if (tetap(e)) baca[p.urutan][kunci] = { galat: e.message };
-          else sementara = e.message;
+          if (tetap(e)) baca[p.urutan][KUNCI_BACA[kolom]] = { galat: e.message }; else sementara = e.message;
         }
       });
     }
   }
-  await berbarengan(tugas, paralel());
+  await berbarengan(ambil, 3);
 
-  // Surat izin: baca hanya untuk yang umurnya < 17 (hemat model).
-  const izin = [];
-  for (const p of t.pemain || []) {
-    const b = baca[p.urutan]._izin; delete baca[p.urutan]._izin;
-    if (!b) continue;
-    const umur = N.umurPada(N.lahirIdentitas(baca[p.urutan].identitas));
-    if (umur === null || umur >= N.UMUR_IZIN) continue;
-    izin.push(async () => {
-      try {
-        const gambar = b.mime === "application/pdf" ? await pdf(b.data) : [b.data];
-        baca[p.urutan].izin = await tanyaModel(pertanyaan("izin_path", p), gambar, f);
-      } catch (e) { if (tetap(e)) baca[p.urutan].izin = { galat: e.message }; else sementara = e.message; }
-    });
-  }
-  await berbarengan(izin, paralel());
+  // Baca satu berkas dengan mesin m. Galat tetap (PDF rusak, gambar tak terbuka) dicatat; galat lain dilempar.
+  const gambarDari = async (b) => (b.gambar ??= b.mime === "application/pdf" ? await pdf(b.data) : [b.data]);
+  const bacaSatu = async (u, kolom, m) => {
+    try { baca[u][KUNCI_BACA[kolom]] = await tanyaModel(pertanyaan(kolom, pemain[u]), await gambarDari(berkas[u][kolom]), f, { mesin: m, tunggu: !(gabungan && m === "pool") }); }
+    catch (e) { if (e.fatal || e.poolTidakSiap) throw e; if (tetap(e)) baca[u][KUNCI_BACA[kolom]] = { galat: e.message }; else throw e; }
+  };
+  const jalankan = async (daftar, m) => {
+    await berbarengan(daftar.map(({ u, kolom }) => async () => {
+      try { await bacaSatu(u, kolom, m); } catch (e) { if (e.fatal || e.poolTidakSiap) throw e; sementara = e.message; }
+    }), paralel(m));
+  };
 
+  // 2. Tahap A: semua berkas (surat izin hanya untuk pemain < 17 tahun, setelah identitas terbaca).
+  const tahapA = Object.entries(berkas).flatMap(([u, b]) => Object.keys(b).filter((k) => k !== "izin_path").map((kolom) => ({ u: +u, kolom })));
+  await jalankan(tahapA, mesinA);
+  const perluIzin = () => Object.keys(berkas).map(Number).filter((u) => berkas[u].izin_path && !baca[u].izin && (umur(u) ?? 99) < N.UMUR_IZIN).map((u) => ({ u, kolom: "izin_path" }));
+  await jalankan(perluIzin(), mesinA);
   let namaTim = null;
-  try { namaTim = await tanyaModel(N.tanyaNamaTim(t.nama_tim), null, f); } catch (e) { sementara = e.message; }
+  try { namaTim = await tanyaModel(N.tanyaNamaTim(t.nama_tim), null, f, { mesin: mesinA }); } catch (e) { sementara = e.message; }
 
-  const durasi = Date.now() - mulai;
-  if (sementara) return { hasil: "galat", ringkas: `Belum selesai diperiksa, dicoba lagi otomatis: ${sementara}`.slice(0, 500), rincian: {}, identitas: [], durasi };
-  const n = N.nilaiTim(t, baca, namaTim, sha);
-  const identitas = n.identitas.map((x) => ({ ...x, nik: x.nik ? createHmac("sha256", CFG.kunci).update("nik:" + x.nik).digest("hex").slice(0, 32) : "" }));
-  return { ...n, identitas, durasi };
+  const hasilAkhir = (n, versi, tambahan = {}) => {
+    const identitas = n.identitas.map((x) => ({ ...x, nik: x.nik ? createHmac("sha256", CFG.kunci).update("nik:" + x.nik).digest("hex").slice(0, 32) : "" }));
+    return { ...n, identitas, durasi: Date.now() - mulai, versi, ...tambahan };
+  };
+  if (sementara) return { hasil: "galat", ringkas: `Belum selesai diperiksa, dicoba lagi otomatis: ${sementara}`.slice(0, 500), rincian: {}, identitas: [], durasi: Date.now() - mulai, versi: VERSI_LENGKAP };
+  let n = N.nilaiTim(t, baca, namaTim, sha);
+  if (!gabungan) return hasilAkhir(n, VERSI_LENGKAP);
+
+  // 3. Tahap B (gabungan): berkas yang ditolak 9b dibaca ulang Qwen3.6-35B di pool GPU; jawaban 35B yang dipakai.
+  const ulang = berkasUlang(t, n, baca, berkas), ulangNama = !!(namaTim && namaTim.pantas === false);
+  if (!ulang.length && !ulangNama) return hasilAkhir(n, VERSI_LENGKAP, { tahapB: 0 });
+  const tunda = (alasan) => {
+    log(`${t.kode}: ${ulang.length + (ulangNama ? 1 : 0)} berkas menunggu cek ulang model besar (${alasan})`);
+    return hasilAkhir(n, VERSI_TUNDA, { tahapB: 0, ringkas: `Menunggu cek ulang model besar untuk ${ulang.length + (ulangNama ? 1 : 0)} berkas. ${n.ringkas}`.slice(0, 500),
+      rincian: { ...n.rincian, tunggu: ulang.length + (ulangNama ? 1 : 0) } });
+  };
+  mintaPool();
+  if (!(await cekPool(f)).siap) return tunda(pool.alasan || "pool GPU belum siap");
+  try {
+    await jalankan(ulang, "pool");
+    // Umur bisa berubah setelah identitas dibaca ulang: surat izin yang kini wajib dibaca 35B juga.
+    await jalankan(perluIzin(), "pool");
+    if (ulangNama) namaTim = await tanyaModel(N.tanyaNamaTim(t.nama_tim), null, f, { mesin: "pool", tunggu: false });
+  } catch (e) {
+    if (e.fatal) throw e;
+    return tunda(e.message);
+  }
+  if (sementara) return { hasil: "galat", ringkas: `Belum selesai diperiksa, dicoba lagi otomatis: ${sementara}`.slice(0, 500), rincian: {}, identitas: [], durasi: Date.now() - mulai, versi: VERSI_LENGKAP };
+  n = N.nilaiTim(t, baca, namaTim, sha);
+  return hasilAkhir(n, VERSI_LENGKAP, { tahapB: ulang.length + (ulangNama ? 1 : 0) });
 }
 
 async function simpan(t, h, f = fetch) {
-  return rpc("tednas_ai_simpan", { p_kunci: CFG.kunci, p_tim: t.id, p_sidik: t.sidik, p_versi: N.VERSI_AGEN, p_hasil: h.hasil,
+  return rpc("tednas_ai_simpan", { p_kunci: CFG.kunci, p_tim: t.id, p_sidik: t.sidik, p_versi: h.versi ?? VERSI_LENGKAP, p_hasil: h.hasil,
     p_ringkas: h.ringkas, p_rincian: h.rincian, p_identitas: h.identitas, p_model: MODEL_LABEL(), p_durasi: h.durasi }, f);
 }
 
 /* ── Putaran ──────────────────────────────────────────────────────────── */
 export async function putaran(alat = {}) {
   const f = alat.fetch || fetch;
-  const a = await rpc("tednas_ai_antre", { p_kunci: CFG.kunci, p_versi: N.VERSI_AGEN, p_batas: 1 }, f);
-  if (!a.tim.length) return 0;
+  // Gabungan: selagi pool belum siap, tim yang menunggu cek ulang 35B tidak diambil (VERSI_TUNDA).
+  const siap = CFG.mesin !== "gabungan" || (await cekPool(f)).siap;
+  const a = await rpc("tednas_ai_antre", { p_kunci: CFG.kunci, p_versi: siap ? VERSI_LENGKAP : VERSI_TUNDA, p_batas: 1 }, f);
+  if (!a.tim.length) {
+    // Ada tim yang menunggu model besar → minta broker merakit pool.
+    if (!siap && (await rpc("tednas_ai_antre", { p_kunci: CFG.kunci, p_versi: VERSI_LENGKAP, p_batas: 1 }, f)).sisa) mintaPool();
+    return 0;
+  }
   const t = a.tim[0];
   let h;
   try { h = await periksaTim(t, alat); }
@@ -344,7 +401,8 @@ export async function putaran(alat = {}) {
     h = { hasil: "galat", ringkas: `Agen galat, dicoba lagi otomatis: ${e.message}`.slice(0, 500), rincian: {}, identitas: [], durasi: null };
   }
   const s = await simpan(t, h, f);
-  log(`${t.kode}: ${h.hasil}${s && s.ok ? ` → ${s.akhir}` : ` (tidak disimpan: ${s && s.pesan})`} · ${Math.round((h.durasi || 0) / 1000)} dtk · sisa ${Math.max(0, a.sisa - 1)}`);
+  const jalur = h.versi === VERSI_TUNDA ? " · menunggu 35B" : h.tahapB ? ` · ${h.tahapB} berkas dibaca ulang 35B` : "";
+  log(`${t.kode}: ${h.hasil}${s && s.ok ? ` → ${s.akhir}${s.status ? ` (status: ${s.status})` : ""}` : ` (tidak disimpan: ${s && s.pesan})`}${jalur} · ${Math.round((h.durasi || 0) / 1000)} dtk · sisa ${Math.max(0, a.sisa - 1)}`);
   return a.sisa;
 }
 
