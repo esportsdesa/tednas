@@ -36,10 +36,11 @@ const AI_CEK = { ...AI_LOLOS, akhir: "cek", hasil: "lolos", ringkas: "1 catatan"
 let dunia = "ai"; // "ai" | "tanpa-ai"
 const catat = { tim: [], ubah: [], hapus: [], kabari: [], kom: [] };
 const TOKEN = "ab".repeat(20);
-const DATA = () => [tim(3, null), { ...tim(2, AI_CEK), komunitas_id: 1 }, tim(1, AI_LOLOS, "terverifikasi", "ai")];
+const DATA = () => [{ ...tim(3, null), komunitas_id: 3 }, { ...tim(2, AI_CEK), komunitas_id: 1 }, { ...tim(1, AI_LOLOS, "terverifikasi", "ai"), komunitas_id: 3 }];
 const KOMUNITAS = [
-  { id: 1, nama: "Esports Malang Raya", kota: "Kota Malang", provinsi: "JAWA TIMUR", pic_nama: "Budi", pic_wa: "6281299990001", aktif: true, mendaftar: 4, terverifikasi: 2, menunggu: 2 },
-  { id: 2, nama: "Komunitas Bubar", kota: "Kediri", provinsi: "", pic_nama: "", pic_wa: "", aktif: false, mendaftar: 1, terverifikasi: 0, menunggu: 1 }];
+  { id: 1, nama: "Esports Malang Raya", kota: "Kota Malang", provinsi: "JAWA TIMUR", pic_nama: "Budi", pic_wa: "6281299990001", aktif: true, bawaan: false, mendaftar: 4, terverifikasi: 2, menunggu: 2 },
+  { id: 2, nama: "Komunitas Bubar", kota: "Kediri", provinsi: "", pic_nama: "", pic_wa: "", aktif: false, bawaan: false, mendaftar: 1, terverifikasi: 0, menunggu: 1 },
+  { id: 3, nama: "MZone Tour", kota: "", provinsi: "", pic_nama: "", pic_wa: "", aktif: true, bawaan: true, mendaftar: 50, terverifikasi: 8, menunggu: 42 }];
 
 const JENIS = { ".html": "text/html; charset=utf-8", ".js": "text/javascript", ".css": "text/css", ".json": "application/json", ".png": "image/png", ".jpg": "image/jpeg", ".ico": "image/x-icon", ".pdf": "application/pdf" };
 const srv = createServer(async (req, res) => {
@@ -189,16 +190,21 @@ await uji("komunitas ToT: tautan per komunitas, WA PIC, tambah & nonaktifkan, la
   const tunggu = async (f) => { for (let i = 0; i < 60 && !f(); i++) await new Promise((ok) => setTimeout(ok, 50)); assert.ok(f()); };
   assert.match(await halaman.textContent("#t-baris tr:nth-child(2) td:nth-child(2)"), /via Esports Malang Raya/);
   await halaman.click("[data-tab='komunitas']");
-  await halaman.waitForFunction(() => document.querySelectorAll("#k-baris tr").length === 2);
+  await halaman.waitForFunction(() => document.querySelectorAll("#k-baris tr").length === 3);
   const baris = await halaman.textContent("#k-baris");
   assert.ok(baris.includes(`${ASAL.replace(/^https?:\/\//, "")}/k/1`), baris);
   assert.match(baris, /2 terverifikasi4 mendaftar · 2 menunggu/);
   assert.match(baris, /NONAKTIF/);
+  assert.match(baris, /MZone Tour · BAWAAN: tim tanpa tautan komunitas masuk sini/);
+  assert.equal(await halaman.$$eval("[data-k-aktif='3']", (b) => b.length), 0, "komunitas bawaan tidak bisa dinonaktifkan");
   assert.equal(await halaman.$$eval("#k-baris a.btn-wa", (a) => a.length), 1, "WA PIC hanya bila nomornya ada");
   const wa = new URL(await halaman.getAttribute("#k-baris a.btn-wa", "href"));
   assert.equal(wa.pathname, "/6281299990001");
-  assert.ok(wa.searchParams.get("text").includes(`*Esports Malang Raya*`) && wa.searchParams.get("text").includes(`${ASAL}/k/1\n`), wa.searchParams.get("text"));
-  assert.match(await halaman.textContent("#k-ringkas"), /1Komunitas aktif2Tim terverifikasi lewat komunitas4Tim mendaftar/);
+  const teksWa = wa.searchParams.get("text");
+  assert.ok(teksWa.includes(`*Esports Malang Raya*`) && teksWa.includes(`${ASAL}/k/1\n`), teksWa);
+  assert.ok(!/komunitas\.html|\/komunitas\b|Peringkat/.test(teksWa), "tanpa papan skor di esportsdesa.id");
+  assert.equal(await halaman.$$eval("[data-isi='komunitas'] a:not(.btn-wa)[href*='komunitas']", (a) => a.length), 0, "tanpa tautan ke papan skor");
+  assert.match(await halaman.textContent("#k-ringkas"), /2Komunitas aktif10Tim terverifikasi lewat komunitas54Tim mendaftar/);
 
   await halaman.fill("#k-nama", "Komunitas Batu"); await halaman.fill("#k-wa", "0812-3456-7000");
   await halaman.click("#k-simpan");
@@ -212,7 +218,8 @@ await uji("komunitas ToT: tautan per komunitas, WA PIC, tambah & nonaktifkan, la
   await halaman.click("[data-tab='tim']");
   await halaman.click("button.btn[data-pemain='00000000-0000-0000-0000-000000000003']");
   await halaman.waitForSelector("#d-pemain[open] #d-komunitas-label:not([hidden])");
-  assert.equal(await halaman.$eval("#d-komunitas", (s) => s.value), "");
+  assert.equal(await halaman.$eval("#d-komunitas", (s) => s.value), "3", "tim tanpa tautan = MZone Tour");
+  assert.deepEqual(await halaman.$$eval("#d-komunitas option", (o) => o.map((x) => x.textContent)), ["Esports Malang Raya", "Komunitas Bubar (nonaktif)", "MZone Tour (bawaan)"], "tanpa pilihan 'tanpa komunitas'");
   const n = catat.ubah.length;
   await halaman.selectOption("#d-komunitas", "1");
   await tunggu(() => catat.ubah.length === n + 1);

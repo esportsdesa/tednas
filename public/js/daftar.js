@@ -57,7 +57,6 @@
       $('#komunitas-pita').hidden = false;
     } catch (e) { komunitas = null; }
   }
-  $('#komunitas-hapus').onclick = () => { komunitas = null; U.komunitas.hapus(); $('#komunitas-pita').hidden = true; };
   // Urutan 1-5 pemain inti, urutan 6 cadangan. Berkas & path disimpan per pemain supaya
   // kembali ke langkah sebelumnya atau kirim ulang tidak mengulang unggahan.
   const pemain = Array.from({ length: 6 }, () => ({ jenis: 'KTP', dok: null, ml: null, ig1: null, ig2: null, izin: null, bawah17: false, pathDok: '', pathMl: '', pathIg1: '', pathIg2: '', pathIzin: '' }));
@@ -318,8 +317,8 @@
         komunitas: komunitas ? komunitas.id : null
       });
       $('#form').hidden = true; $('#komunitas-pita').hidden = true; $('#sukses').hidden = false;
-      if (komunitas && hasil.komunitas) {
-        $('#sukses-komunitas').textContent = `Tercatat untuk komunitas ${komunitas.nama}. Skor komunitas bertambah begitu tim ini terverifikasi.`;
+      if (komunitas && hasil.komunitas === komunitas.id) {
+        $('#sukses-komunitas').textContent = `Tercatat untuk komunitas ${komunitas.nama}.`;
         $('#sukses-komunitas').hidden = false;
       }
       $('#kode').textContent = hasil.kode;

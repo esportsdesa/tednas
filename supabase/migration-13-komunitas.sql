@@ -1,11 +1,14 @@
 -- Migrasi 13: TAUTAN KOMUNITAS untuk ToT (lomba antarkomunitas mengumpulkan tim, permintaan user 17 Nov 2026).
 -- Jalankan SETELAH migration-12-perbaiki.sql. Aman dijalankan ulang.
 --
---  * Admin membuat komunitas di halaman admin → tautannya esportsdesa.id/k/<id> (dialihkan ke daftar?k=<id>).
+--  * ToT (papan skor, lomba) hanya ada di MZone. esportsdesa.id tetap hanya jalur pendaftaran: di sini cuma tautan
+--    pendaftaran per komunitas + pencatatan, dan tab Komunitas di halaman admin untuk membuat tautannya.
+--  * Admin membuat komunitas → tautannya esportsdesa.id/k/<id> (dialihkan ke daftar?k=<id>).
 --  * Tim yang mendaftar lewat tautan itu tercatat di tednas_tim.komunitas_id (tednas_daftar menerima p_komunitas).
---    Kode yang tidak dikenal atau komunitas yang dinonaktifkan diabaikan: pendaftaran tidak pernah gagal karenanya.
---  * Skor komunitas = tim TERVERIFIKASI (tim yang lolos cek berkas), supaya tidak bisa didongkrak pendaftaran asal-asalan.
---    Papan skor publik hanya memuat nama, kota, dan jumlah; PIC dan nomornya hanya untuk admin.
+--  * Tim yang TIDAK lewat tautan komunitas (atau lewat kode tak dikenal / komunitas nonaktif) masuk komunitas
+--    bawaan, MZone Tour (user 17 Nov: "yang ngga ada di komunitas manapun, masuknya ke komunitas mzonetour").
+--    Tim lama yang belum punya komunitas ikut dipindah ke sana oleh migrasi ini. Pendaftaran tidak pernah gagal
+--    karena kode komunitas.
 --  * Admin bisa memindahkan tim ke komunitas lain (koreksi) langsung di tabel tednas_tim (RLS admin yang sudah ada).
 --    Kolom komunitas_id tidak ikut drive_versi dan sidik AI, jadi tidak memicu tulis ulang Sheet atau cek ulang AI.
 
@@ -17,8 +20,12 @@ create table if not exists public.tednas_komunitas (
   pic_nama text not null default '' check (char_length(pic_nama) <= 80),
   pic_wa text not null default '' check (pic_wa = '' or pic_wa ~ '^628[0-9]{7,12}$'),
   aktif boolean not null default true,
+  bawaan boolean not null default false,   -- satu-satunya komunitas bawaan (MZone Tour)
   created_at timestamptz not null default now()
 );
+create unique index if not exists tednas_komunitas_satu_bawaan on public.tednas_komunitas (bawaan) where bawaan;
+insert into public.tednas_komunitas (nama, bawaan)
+  select 'MZone Tour', true where not exists (select 1 from public.tednas_komunitas where bawaan);
 alter table public.tednas_komunitas enable row level security;
 revoke all on public.tednas_komunitas from anon, authenticated;
 grant select, insert, update on public.tednas_komunitas to authenticated;
@@ -28,26 +35,19 @@ create policy komunitas_admin on public.tednas_komunitas for all to authenticate
 
 alter table public.tednas_tim add column if not exists komunitas_id int references public.tednas_komunitas(id) on delete set null;
 create index if not exists tednas_tim_komunitas on public.tednas_tim (komunitas_id) where komunitas_id is not null;
+-- Tim lama tanpa komunitas → MZone Tour.
+update public.tednas_tim set komunitas_id = (select id from public.tednas_komunitas where bawaan) where komunitas_id is null;
+
+-- Papan skor publik tidak dibuat di esportsdesa.id (ToT di MZone). Versi awal migrasi ini sempat membuatnya.
+drop function if exists public.tednas_komunitas_papan();
 
 -- ========== PUBLIK ==========
 -- Nama komunitas untuk spanduk di formulir daftar ("Kamu mendaftar lewat komunitas …"). Null bila tidak ada/nonaktif.
+-- Tanpa data PIC.
 create or replace function public.tednas_komunitas_info(p_id int)
 returns json language sql stable security definer set search_path = public as $$
   select json_build_object('id', k.id, 'nama', k.nama, 'kota', k.kota, 'provinsi', k.provinsi)
   from public.tednas_komunitas k where k.id = p_id and k.aktif;
-$$;
-
--- Papan skor ToT: komunitas aktif, urut tim terverifikasi lalu tim mendaftar.
-create or replace function public.tednas_komunitas_papan()
-returns json language sql stable security definer set search_path = public as $$
-  select coalesce(json_agg(x order by x.terverifikasi desc, x.mendaftar desc, x.nama), '[]'::json) from (
-    select k.id, k.nama, k.kota, k.provinsi,
-      count(t.id) as mendaftar,
-      count(t.id) filter (where t.status = 'terverifikasi') as terverifikasi,
-      coalesce(sum((select count(*) from public.tednas_pemain p where p.tim_id = t.id)) filter (where t.status = 'terverifikasi'), 0) as pemain
-    from public.tednas_komunitas k left join public.tednas_tim t on t.komunitas_id = k.id
-    where k.aktif
-    group by k.id) x;
 $$;
 
 -- ========== ADMIN ==========
@@ -147,8 +147,11 @@ begin
     raise exception 'CAPTCHA_GAGAL';
   end if;
 
-  -- Tautan komunitas (migrasi 13): kode tak dikenal / komunitas nonaktif diabaikan.
+  -- Tautan komunitas (migrasi 13). Tanpa tautan, kode tak dikenal, atau komunitas nonaktif → komunitas bawaan (MZone Tour).
   select id into v_komunitas from public.tednas_komunitas where id = p_komunitas and aktif;
+  if v_komunitas is null then
+    select id into v_komunitas from public.tednas_komunitas where bawaan;
+  end if;
 
   v_kode := 'TED-' || lpad(nextval('public.tednas_kode_seq')::text, 5, '0');
   insert into public.tednas_tim (kode, nama_tim, nama_kapten, wa_kapten, prov_kode, provinsi,
@@ -176,8 +179,6 @@ grant execute on function public.tednas_daftar(text,text,text,text,text,text,tex
 commit;
 
 revoke all on function public.tednas_komunitas_info(int) from public;
-revoke all on function public.tednas_komunitas_papan() from public;
 revoke all on function public.tednas_komunitas_admin() from public, anon;
 grant execute on function public.tednas_komunitas_info(int) to anon, authenticated;
-grant execute on function public.tednas_komunitas_papan() to anon, authenticated;
 grant execute on function public.tednas_komunitas_admin() to authenticated;

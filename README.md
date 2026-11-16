@@ -49,15 +49,17 @@ dikabari dan kapan ia memperbaiki. Migrasi: `supabase/migration-12-perbaiki.sql`
 
 ## Tautan komunitas (ToT)
 
-Lomba antarkomunitas: tiap komunitas esports mendapat tautan pendaftaran sendiri, `esportsdesa.id/k/<nomor>`.
+Lomba antarkomunitas (ToT) dan papan skornya ada di **MZone**. esportsdesa.id tetap hanya jalur pendaftaran: di sini
+cuma tautan pendaftaran per komunitas, `esportsdesa.id/k/<nomor>`, dan pencatatan komunitas tiap tim.
 - **Admin → tab Komunitas:** tambah komunitas (nama, kota, provinsi, PIC), salin tautannya, atau kirim ke PIC dengan
-  **WA PIC**. Komunitas bisa dinonaktifkan: hilang dari papan, dan tautannya tidak lagi mencatat tim baru.
+  **WA PIC**. Komunitas bisa dinonaktifkan: tautannya tidak lagi mencatat tim baru.
 - **Pendaftar:** `/k/<nomor>` dialihkan ke `daftar?k=<nomor>`. Formulir menampilkan "Kamu mendaftar lewat komunitas …".
   Kode disimpan 30 hari di browser (tautan terakhir yang berlaku), jadi tetap tercatat walau pendaftar baru mendaftar
-  besoknya. Pendaftar bisa melepasnya ("Bukan dari komunitas ini"). Kode yang tidak dikenal diabaikan, dan pendaftaran
-  tidak pernah gagal karenanya.
-- **Skor = tim terverifikasi** yang mendaftar lewat tautan komunitas, supaya tidak bisa didongkrak pendaftaran
-  asal-asalan. Peringkat publik: [esportsdesa.id/komunitas](https://esportsdesa.id/komunitas) (tanpa data PIC).
+  besoknya.
+- **Komunitas bawaan MZone Tour:** tim yang mendaftar tanpa tautan komunitas, lewat kode yang tidak dikenal, atau lewat
+  komunitas yang dinonaktifkan masuk ke sini. Tim yang terdaftar sebelum fitur ini juga dipindah ke sini oleh migrasi.
+  Pendaftaran tidak pernah gagal karena kode komunitas.
+- **Skor** yang ditampilkan admin: tim terverifikasi per komunitas (jumlah yang mendaftar dan menunggu ikut tampil).
 - **Koreksi:** di dialog pemain, admin bisa memindahkan tim ke komunitas lain. Kolom CSV `komunitas` ikut terisi.
 
 Migrasi: `supabase/migration-13-komunitas.sql`.

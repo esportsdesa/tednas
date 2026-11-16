@@ -82,11 +82,6 @@ async function supabase(req, res, u) {
     assert.equal(k.ok, true, JSON.stringify(k));
     return kirim(200, { kode: t.kode, komunitas: b.p_komunitas ?? null });
   }
-  if (u.pathname === "/sb/rest/v1/rpc/tednas_komunitas_papan") {
-    return kirim(200, [{ id: 7, nama: "Esports Malang Raya", kota: "Kota Malang", provinsi: "JAWA TIMUR", mendaftar: 12, terverifikasi: 9, pemain: 47 },
-      { id: 3, nama: "Batu Gaming", kota: "Kota Batu", provinsi: "JAWA TIMUR", mendaftar: 15, terverifikasi: 4, pemain: 20 },
-      { id: 9, nama: "Komunitas Baru", kota: "Sleman", provinsi: "DI YOGYAKARTA", mendaftar: 0, terverifikasi: 0, pemain: 0 }]);
-  }
   if (u.pathname === "/sb/rest/v1/rpc/tednas_komunitas_info") {
     const b = JSON.parse(isi);
     return kirim(200, b.p_id === 7 ? { id: 7, nama: "Esports Malang Raya", kota: "Kota Malang", provinsi: "JAWA TIMUR" } : null);
@@ -279,7 +274,7 @@ await uji("perbaikan oleh kapten: tautan dari WA → catatan per pemain → gant
   assert.match(await halaman.getAttribute("#wa-grup-link", "href"), /^https:\/\/chat\.whatsapp\.com\//);
 });
 
-await uji("tautan komunitas ToT: daftar?k=7 → spanduk komunitas → tercatat di pendaftaran; tetap diingat; bisa dilepas", async () => {
+await uji("tautan komunitas ToT: daftar?k=7 → spanduk komunitas → tercatat di pendaftaran; tetap diingat; tanpa halaman/menu ToT di situs", async () => {
   assert.equal(daftarTerakhir.p_komunitas, undefined, "pendaftaran biasa tanpa komunitas");
   await isiFormulir({ tim: "Rajawali Komunitas", wa: "081234567893", awal: "D", jalur: "/daftar?k=7" });
   assert.equal(await halaman.isVisible("#komunitas-pita"), true);
@@ -291,33 +286,19 @@ await uji("tautan komunitas ToT: daftar?k=7 → spanduk komunitas → tercatat d
   assert.match(await halaman.textContent("#sukses-komunitas"), /Tercatat untuk komunitas Esports Malang Raya/);
   assert.equal(await halaman.isVisible("#komunitas-pita"), false);
 
-  // Dibuka lagi tanpa ?k (mis. besoknya): komunitas masih diingat browser. "Bukan dari komunitas ini" melepasnya.
+  // Dibuka lagi tanpa ?k (mis. besoknya): komunitas masih diingat browser. Tidak ada tombol untuk melepasnya (user).
   await halaman.goto(`${ASAL}/daftar`);
   await halaman.waitForSelector("#komunitas-pita:not([hidden])");
-  await halaman.click("#komunitas-hapus");
-  assert.equal(await halaman.isVisible("#komunitas-pita"), false);
-  await halaman.reload();
-  await halaman.waitForSelector("#form:not([hidden])");
-  await halaman.waitForTimeout(300);
-  assert.equal(await halaman.isVisible("#komunitas-pita"), false, "sudah dilepas");
+  assert.equal(await halaman.$$eval("#komunitas-pita button, #komunitas-pita a", (x) => x.length), 0);
+  // ToT hanya di MZone: tidak ada menu/halaman komunitas di esportsdesa.id.
+  assert.equal(await halaman.$$eval("header.nav a", (a) => a.filter((x) => /komunitas/i.test(x.textContent + x.href)).length), 0);
 
-  // Kode tak dikenal / nonaktif: tanpa spanduk, dan tidak disimpan.
+  // Kode tak dikenal / nonaktif: tanpa spanduk, dan tidak disimpan (database memasukkan timnya ke MZone Tour).
   await halaman.goto(`${ASAL}/daftar?k=99`);
   await halaman.waitForSelector("#form:not([hidden])");
   await halaman.waitForTimeout(300);
   assert.equal(await halaman.isVisible("#komunitas-pita"), false);
   assert.equal(await halaman.evaluate(() => localStorage.getItem("tednas_ref_komunitas")), null);
-});
-
-await uji("papan komunitas publik: peringkat skor terverifikasi, cari tanpa mengubah nomor peringkat", async () => {
-  await halaman.goto(`${ASAL}/komunitas`);
-  await halaman.waitForFunction(() => document.querySelectorAll("#baris tr").length === 3);
-  assert.deepEqual(await halaman.$$eval("#baris tr", (r) => r.map((x) => [...x.children].map((c) => c.textContent.trim()).join("|"))), [
-    "1|Esports Malang RayaKota Malang, JAWA TIMUR|9|12|47", "2|Batu GamingKota Batu, JAWA TIMUR|4|15|20", "3|Komunitas BaruSleman, DI YOGYAKARTA|0|0|0"]);
-  assert.equal(await halaman.textContent("#p-ver"), "13");
-  await halaman.fill("#cari", "batu");
-  assert.deepEqual(await halaman.$$eval("#baris tr td:first-child", (t) => t.map((x) => x.textContent)), ["2"]);
-  assert.equal(await halaman.$$eval("header.nav a[aria-current=page]", (a) => a.map((x) => x.textContent).join()), "Komunitas", "menu Komunitas aktif");
 });
 
 await uji("tanpa galat skrip di halaman", async () => { assert.deepEqual(galatKonsol, []); });

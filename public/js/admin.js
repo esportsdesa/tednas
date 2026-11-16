@@ -53,7 +53,7 @@
     `Halo Kak ${k.pic_nama || ''}, ini tautan pendaftaran khusus komunitas *${k.nama}* untuk Turnamen Esports Desa Nasional 2027:`,
     tautanKomunitas(k.id), '',
     'Setiap tim desa yang mendaftar lewat tautan ini tercatat untuk komunitas kakak. Skor komunitas = jumlah tim yang terverifikasi (berkasnya lolos pemeriksaan).',
-    `Peringkat bisa dipantau di ${new URL('komunitas', location.href).href}`, '', 'Panitia TEDNas 2027'].join('\n'))}`;
+    '', 'Panitia TEDNas 2027'].join('\n'))}`;
 
   async function muatKomunitas() {
     try { komunitasDaftar = await DB.komunitasAdmin(); }
@@ -63,7 +63,7 @@
       [aktif.reduce((n, k) => n + Number(k.mendaftar), 0), 'Tim mendaftar lewat komunitas']].map(([a, b]) => `<div><b>${angka(a)}</b><span>${b}</span></div>`).join('');
     $('#k-baris').innerHTML = komunitasDaftar.length ? komunitasDaftar.map((k) => `<tr${k.aktif ? '' : ' class="nonaktif"'}>
       <td>${k.id}</td>
-      <td><b>${esc(k.nama)}</b><small>${esc([k.kota, k.provinsi].filter(Boolean).join(', '))}${k.aktif ? '' : ' · NONAKTIF'}</small></td>
+      <td><b>${esc(k.nama)}</b><small>${esc([k.kota, k.provinsi].filter(Boolean).join(', '))}${k.bawaan ? ' · BAWAAN: tim tanpa tautan komunitas masuk sini' : ''}${k.aktif ? '' : ' · NONAKTIF'}</small></td>
       <td>${esc(k.pic_nama || '-')}${k.pic_wa ? `<small>+${esc(k.pic_wa)}</small>` : ''}</td>
       <td><code class="tautan-k">${esc(tautanKomunitas(k.id).replace(/^https?:\/\//, ''))}</code></td>
       <td><b>${angka(k.terverifikasi)}</b> terverifikasi<small>${angka(k.mendaftar)} mendaftar · ${angka(k.menunggu)} menunggu</small></td>
@@ -71,7 +71,7 @@
         <button class="btn btn-garis-gelap btn-kecil" data-k-salin="${k.id}">Salin Tautan</button>
         ${k.pic_wa ? `<a class="btn btn-wa btn-kecil" target="_blank" rel="noopener" href="${esc(waPic(k))}" title="Kirim tautan ke PIC lewat WhatsApp">WA PIC</a>` : ''}
         <button class="btn btn-garis-gelap btn-kecil" data-k-ubah="${k.id}">Ubah</button>
-        <button class="btn btn-kecil ${k.aktif ? 'btn-bahaya' : ''}" data-k-aktif="${k.id}">${k.aktif ? 'Nonaktifkan' : 'Aktifkan'}</button></div></td></tr>`).join('')
+        ${k.bawaan ? '' : `<button class="btn btn-kecil ${k.aktif ? 'btn-bahaya' : ''}" data-k-aktif="${k.id}">${k.aktif ? 'Nonaktifkan' : 'Aktifkan'}</button>`}</div></td></tr>`).join('')
       : '<tr><td colspan="6">Belum ada komunitas. Tambahkan lewat formulir di atas.</td></tr>';
   }
 
@@ -188,10 +188,11 @@
   $('#d-komunitas').onchange = async (e) => {
     const t = timDialog; if (!t) return;
     const id = Number(e.target.value) || null;
+    if (!id) return;
     try {
       await DB.setKomunitasTim(t.id, id);
       t.komunitas_id = id;
-      U.pesan(id ? `${t.nama_tim} dicatat untuk ${namaKomunitas(id)}.` : `${t.nama_tim} tidak lagi dicatat untuk komunitas mana pun.`, 'ok');
+      U.pesan(`${t.nama_tim} dicatat untuk ${namaKomunitas(id)}.`, 'ok');
       muatTim(); muatKomunitas();
     } catch (err) { U.pesan('Gagal mengubah komunitas: ' + err.message, 'gagal'); e.target.value = t.komunitas_id || ''; }
   };
@@ -258,7 +259,9 @@
       // Koreksi komunitas (mis. kapten lupa memakai tautan komunitasnya). Hanya bila migrasi 13 sudah ada.
       $('#d-komunitas-label').hidden = !komunitasDaftar;
       if (komunitasDaftar) {
-        $('#d-komunitas').innerHTML = '<option value="">Tanpa komunitas</option>' + komunitasDaftar.map((k) => `<option value="${k.id}" ${k.id === t.komunitas_id ? 'selected' : ''}>${esc(k.nama)}${k.aktif ? '' : ' (nonaktif)'}</option>`).join('');
+        // Tanpa pilihan "tanpa komunitas": tim yang tidak punya komunitas masuk komunitas bawaan (MZone Tour).
+        $('#d-komunitas').innerHTML = (t.komunitas_id ? '' : '<option value="" selected>-</option>')
+          + komunitasDaftar.map((k) => `<option value="${k.id}" ${k.id === t.komunitas_id ? 'selected' : ''}>${esc(k.nama)}${k.bawaan ? ' (bawaan)' : ''}${k.aktif ? '' : ' (nonaktif)'}</option>`).join('');
       }
       $('#d-pemain-ai').innerHTML = aiTim(t);
       $('#d-pemain-ulang').hidden = !(DB.aiAda && t.ai);
