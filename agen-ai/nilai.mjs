@@ -12,7 +12,10 @@ import { PROVINSI, KABKOTA } from "./wilayah.mjs";
 // domisili = SATU PROVINSI dengan tim (bukan lagi sekabupaten); nama tim bebas (hanya dicek kepantasannya).
 // v3 (16 Nov, dari hasil nyata pertama): satu foto berisi beberapa kartu → baca kartu orang itu saja; foto
 // identitas/izin yang sama untuk beberapa pemain BUKAN ganda (KK bersama, foto kartu sekelas); inisial nama diterima.
-export const VERSI_AGEN = 3;
+// v4 (16 Nov malam): bukti follow dinilai dari tombol utama profil (abu = sudah); AI sempat terkecoh tombol biru
+// "Ikuti" di kartu "Disarankan untuk Anda" (10 tim tertandai keliru). Satu screenshot follow kapten untuk seluruh
+// tim dianggap cukup (user: "cukup"); screenshot yang sama di tim LAIN tetap ganda.
+export const VERSI_AGEN = 4;
 export const TANGGAL_ACUAN = "2027-01-15"; // Peraturan A: "Berusia 15–30 tahun per 15 Januari 2027"
 export const UMUR_MIN = 15, UMUR_MAKS = 30, UMUR_IZIN = 17;
 export const AKUN_IG = { follow_esports_path: "esportsdesa.official", follow_ppdt_path: "ditjen_ppdt" };
@@ -62,10 +65,27 @@ export function tanyaFollow(akun) {
     prompt: `Ini tangkapan layar yang dikirim sebagai bukti pendaftar sudah mengikuti (follow) akun Instagram @${akun}.
 - instagram: true bila ini tangkapan layar aplikasi atau situs Instagram.
 - akun_terlihat: true bila username @${akun} terlihat di layar.
-- username_profil: username akun yang halaman profilnya sedang dibuka (tanpa @), kosong bila bukan halaman profil.
-- status: "mengikuti" bila @${akun} tampak SUDAH diikuti: tombol abu-abu "Mengikuti" atau "Following" di profil @${akun}, atau @${akun} ada di daftar "Mengikuti" milik pengguna. "belum_mengikuti" bila tombolnya biru "Ikuti", "Follow", "Ikuti balik", atau "Follow back". "tidak_terlihat" bila tidak bisa dipastikan.`,
-    format: obj({ instagram: B, akun_terlihat: B, username_profil: S, status: { type: "string", enum: ["mengikuti", "belum_mengikuti", "tidak_terlihat"] } }),
+- halaman: "profil_akun" bila yang dibuka halaman profil sebuah akun; "daftar_mengikuti" bila daftar akun yang diikuti pengguna; "lain" selain itu.
+- username_profil: username akun yang halaman profilnya sedang dibuka (tulisan paling atas, tanpa @), kosong bila bukan halaman profil.
+- tombol_profil_teks dan tombol_profil_warna: tombol PERTAMA (paling kiri) di baris tombol tepat di bawah bio/keterangan akun profil itu, sebaris dengan "Kirim Pesan"/"Message". Tulis teksnya persis, meski terpotong (mis. "Mengikuti", "Meng…", "Following", "Follo…", "Ikuti", "Follow", "Ikuti balik"). Warna: "abu" (abu-abu/gelap, sering ada panah ⌄) atau "biru". Kosongkan teks dan isi "tidak_ada" bila bukan halaman profil.
+  ABAIKAN tombol biru "Ikuti"/"Follow" di kartu "Disarankan untuk Anda"/"Suggested for you". Itu tombol untuk akun LAIN, bukan @${akun}.
+- status: "mengikuti" bila @${akun} SUDAH diikuti: tombol pertama di profil @${akun} berwarna abu-abu ("Mengikuti"/"Following", boleh terpotong), atau @${akun} ada di daftar "Mengikuti" milik pengguna. "belum_mengikuti" bila tombol pertama di profil @${akun} berwarna biru ("Ikuti"/"Follow"/"Ikuti balik"/"Follow back"). "tidak_terlihat" bila tidak bisa dipastikan.`,
+    format: obj({ instagram: B, akun_terlihat: B, halaman: { type: "string", enum: ["profil_akun", "daftar_mengikuti", "lain"] }, username_profil: S,
+      tombol_profil_teks: S, tombol_profil_warna: { type: "string", enum: ["abu", "biru", "tidak_ada"] },
+      status: { type: "string", enum: ["mengikuti", "belum_mengikuti", "tidak_terlihat"] } }),
   };
+}
+
+/** Status follow dari bacaan AI. Di halaman profil akun itu sendiri, tombol utamanya yang menentukan: abu-abu atau
+ *  "Mengikuti/Following" (meski terpotong) = sudah; biru = belum. Kartu "Disarankan untuk Anda" tidak dihitung. */
+export function statusFollow(f, akun) {
+  const profil = String(f.username_profil || "").toLowerCase().replace(/^@/, "").trim();
+  if (f.halaman === "profil_akun" && profil === akun) {
+    const teks = huruf(f.tombol_profil_teks);
+    if (f.tombol_profil_warna === "abu" || /^(MENG|FOLLOWING|DIIKUTI)/.test(teks)) return "mengikuti";
+    if (f.tombol_profil_warna === "biru") return "belum_mengikuti";
+  }
+  return f.status;
 }
 
 export function tanyaIzin(nama) {
@@ -149,6 +169,9 @@ export const namaKab = (kode) => KAB.find((k) => k.kode === kode)?.nama || kode;
 
 /** Kabupaten/kota yang cocok dengan tulisan di dokumen. Tanpa awalan, "MALANG" = Kab. Malang & Kota Malang. */
 export function cariKabKota(teks) {
+  // Ditulis tanpa spasi ("KABUPATENBENGKULUTENGAH"): cocokkan utuh dulu.
+  const utuh = rapat(teks), persisUtuh = KAB.filter((k) => rapat(k.nama) === utuh);
+  if (utuh && persisUtuh.length) return persisUtuh;
   const j = jenisKab(teks), inti = intiWilayah(teks);
   if (!inti) return [];
   const saring = (f) => KAB.filter((k) => (!j || k.jenis === j) && f(k.inti));
@@ -168,7 +191,7 @@ const ALIAS_PROV = Object.fromEntries(Object.entries({
 
 /** Kode provinsi dari tulisan di dokumen ("PROVINSI JAWA TIMUR", "D.I. YOGYAKARTA", "NTB"); null bila tak dikenali. */
 export function kodeProvinsi(teks) {
-  const x = rapat(huruf(teks).replace(/^(PROVINSI|PROPINSI|PROV)\b\s*/, ""));
+  const x = rapat(huruf(teks).replace(/^(PROVINSI|PROPINSI|PROV\b)\s*/, "")); // "PROVINSIBENGKULU" juga
   if (!x) return null;
   if (ALIAS_PROV[x]) return ALIAS_PROV[x];
   const persis = Object.entries(PROVINSI).find(([, n]) => rapat(n) === x);
@@ -237,6 +260,7 @@ export const samarkanNik = (nik) => { const n = nikBersih(nik); return n.length 
  */
 export function nilaiTim(tim, baca, namaTim, sha = {}) {
   const pemain = [], timButir = [], identitas = [];
+  const followTim = new Set(); // sidik bukti follow yang sudah tercatat untuk tim ini
 
   for (const p of tim.pemain || []) {
     const b = baca[p.urutan] || {}, butir = [], data = {};
@@ -322,19 +346,26 @@ export function nilaiTim(tim, baca, namaTim, sha = {}) {
       if (!f || f.galat) { cek(kode, f?.galat || `Bukti follow @${akun} tidak terbaca.`); continue; }
       if (!f.instagram) cek(kode, `Bukti follow @${akun} bukan tangkapan layar Instagram.`);
       else if (!f.akun_terlihat) cek(kode, `Akun @${akun} tidak terlihat di bukti follow${f.username_profil ? ` (yang terlihat @${f.username_profil})` : ""}.`);
-      else if (f.status !== "mengikuti") cek(kode, f.status === "belum_mengikuti" ? `Bukti follow menunjukkan @${akun} BELUM diikuti (tombol "Ikuti").` : `Status follow @${akun} tidak bisa dipastikan dari tangkapan layar.`);
+      else if (statusFollow(f, akun) !== "mengikuti") cek(kode, statusFollow(f, akun) === "belum_mengikuti" ? `Bukti follow menunjukkan @${akun} BELUM diikuti (tombol "Ikuti").` : `Status follow @${akun} tidak bisa dipastikan dari tangkapan layar.`);
       else ok(kode, `Mengikuti @${akun}.`);
     }
 
-    // 5. Satu berkas dipakai dua kali oleh pemain yang sama
+    // 5. Satu berkas dipakai dua kali oleh pemain yang sama. Satu screenshot untuk kedua bukti follow boleh (mis. daftar
+    //    "Mengikuti" yang memuat kedua akun): tiap akun tetap dicek AI sendiri-sendiri di atas.
     const s = sha[p.urutan] || {}, dobel = new Map();
     for (const [k, h] of Object.entries(s)) if (h) dobel.set(h, [...(dobel.get(h) || []), k]);
-    for (const kol of dobel.values()) if (kol.length > 1) cek(kol[0].replace(/_path$/, ""), `Berkas yang sama persis diunggah untuk ${kol.map(labelKolom).join(" dan ")}.`);
+    for (const kol of dobel.values()) {
+      if (kol.length > 1 && !kol.every((k) => FOLLOW.includes(k))) cek(kol[0].replace(/_path$/, ""), `Berkas yang sama persis diunggah untuk ${kol.map(labelKolom).join(" dan ")}.`);
+    }
 
     pemain.push({ u: p.urutan, nama: p.nama, butir, data: Object.fromEntries(Object.entries(data).filter(([k]) => !k.startsWith("_"))) });
-    // Ganda lintas pemain/tim hanya dari tangkapan layar milik pribadi (profil ML, bukti follow). Foto identitas &
-    // surat izin boleh sama: KK dipakai kakak-adik, atau satu foto berisi kartu pelajar seluruh tim.
-    identitas.push({ u: p.urutan, nik: data._nik || "", ml: data._ml || "", sha: [...new Set(SHA_LINTAS.map((k) => s[k]).filter(Boolean))] });
+    // Ganda lintas pemain/tim hanya dari tangkapan layar (profil ML, bukti follow). Foto identitas & surat izin boleh
+    // sama: KK dipakai kakak-adik, atau satu foto berisi kartu pelajar seluruh tim. Bukti follow boleh satu screenshot
+    // kapten untuk seluruh tim (keputusan user 16 Nov): sidiknya dicatat sekali per tim, jadi hanya tim LAIN yang
+    // memakai screenshot yang sama yang ditandai ganda.
+    const shaLintas = SHA_LINTAS.map((k) => s[k]).filter((h, i) => h && !(FOLLOW.includes(SHA_LINTAS[i]) && followTim.has(h)));
+    for (const k of FOLLOW) if (s[k]) followTim.add(s[k]);
+    identitas.push({ u: p.urutan, nik: data._nik || "", ml: data._ml || "", sha: [...new Set(shaLintas)] });
   }
 
   // Tim: nama bebas, hanya dicek kepantasannya (SARA/pornografi/politik praktis).
@@ -349,6 +380,7 @@ export function nilaiTim(tim, baca, namaTim, sha = {}) {
 }
 
 const SHA_LINTAS = ["profil_ml_path", "follow_esports_path", "follow_ppdt_path"];
+const FOLLOW = ["follow_esports_path", "follow_ppdt_path"];
 
 export const labelKolom = (k) => ({ dokumen_path: "identitas", profil_ml_path: "profil ML", follow_esports_path: "follow @esportsdesa.official",
   follow_ppdt_path: "follow @ditjen_ppdt", izin_path: "surat izin" }[k] || k);

@@ -71,6 +71,8 @@ await uji("wilayah: provinsi domisili dari kabupaten/kota (514) atau tulisan pro
   assert.equal(d("JAKARTA SELATAN", "DKI JAKARTA").prov, "31");
   assert.equal(d("KABUPATEN MALANGG", "").kab, "35.07", "salah baca 1 huruf");
   assert.equal(d("", "").prov, null);
+  assert.deepEqual(d("KABUPATENBENGKULUTENGAH", "PROVINSIBENGKULU"), { prov: "17", kab: "17.09", pemekaran: false }, "tanpa spasi (bacaan nyata 9b)");
+  assert.equal(d("KOTABARU", "").kab, "63.02", "Kabupaten Kotabaru bukan 'Kota Baru'");
   assert.equal(N.kodeProvinsi("PAPUA BARAT DAYA"), "96"); assert.equal(N.kodeProvinsi("PAPUA BARAT"), "92"); assert.equal(N.kodeProvinsi("PAPUA"), "91");
 });
 
@@ -116,7 +118,7 @@ await uji("nilaiTim: tiap pelanggaran jadi catatan 'cek' yang terbaca admin", ()
   baca[5].identitas.tanggal_lahir = "1990-01-01"; baca[5].identitas.nik = "";            // 37 th
   baca[5].profil_ml = { profil_mlbb: false, nickname: "", id_akun: "", server: "" };
   const n = N.nilaiTim({ ...t, nama_tim: "Garuda Esports" }, baca, { pantas: true, alasan: "" },
-    { 3: { follow_esports_path: "x1", follow_ppdt_path: "x1" } });
+    { 3: { profil_ml_path: "x1", follow_esports_path: "x1" } });
   assert.equal(n.hasil, "cek");
   assert.ok(n.ringkas.length <= 500 && n.ringkas.startsWith("7 catatan:"), n.ringkas.slice(0, 40));
   const semua = [...n.rincian.tim.filter((b) => b.s === "cek").map((b) => b.t),
@@ -124,7 +126,7 @@ await uji("nilaiTim: tiap pelanggaran jadi catatan 'cek' yang terbaca admin", ()
   for (const pola of [/P1 Budi Santoso: Umur 15 tahun: surat izin/, /P2 Siti Aminah: .*@ditjen_ppdt BELUM diikuti/,
     /P4 Dewi Lestari: Nama di dokumen "AGUS SALIMUDIN WIJAYA KUSUMA" tidak sama dengan nama terdaftar "Dewi Lestari"/,
     /P3 Rizky Ramadhan: Domisili di Daerah Istimewa Yogyakarta, sedangkan tim mewakili Jawa Timur\. Pemain satu tim harus satu provinsi/, /P5 Agus Salim: Umur 37/, /P5 Agus Salim: Bukan tangkapan layar profil/,
-    /P3 Rizky Ramadhan: Berkas yang sama persis diunggah untuk follow @esportsdesa.official dan follow @ditjen_ppdt/]) {
+    /P3 Rizky Ramadhan: Berkas yang sama persis diunggah untuk profil ML dan follow @esportsdesa.official/]) {
     assert.match(semua, pola);
   }
   assert.equal(N.namaCocok("Agus Salim", "AGUS SALIMUDIN WIJAYA KUSUMA"), true, "Salim ⊂ Salimudin (awalan) diterima");
@@ -148,6 +150,32 @@ await uji("nilaiTim: izin diperiksa bila < 17; berkas lama = cek; kartu pelajar 
   assert.equal(n.hasil, "cek");
   baca[1].izin.ada_tanda_tangan = false;
   assert.ok(N.nilaiTim(t, baca, null, {}).rincian.pemain[0].butir.some((b) => b.b === "izin" && /tanpa tanda tangan/.test(b.t)));
+});
+
+await uji("bukti follow: satu screenshot kapten cukup untuk seluruh tim; screenshot yang sama di tim lain tetap ganda", () => {
+  const baca = Object.fromEntries(TIM.pemain.map((x, i) => [x.urutan, bacaBaik(x, i)]));
+  const sha = Object.fromEntries(TIM.pemain.map((x) => [x.urutan, { dokumen_path: "id" + x.urutan, profil_ml_path: "ml" + x.urutan, follow_esports_path: "ESP", follow_ppdt_path: "PPDT" }]));
+  const n = N.nilaiTim(TIM, baca, null, sha);
+  assert.equal(n.hasil, "lolos", n.ringkas);
+  assert.deepEqual(n.identitas[0].sha, ["ml1", "ESP", "PPDT"], "pemain pertama membawa sidik screenshot kapten (untuk cek antar-tim)");
+  for (const x of n.identitas.slice(1)) assert.deepEqual(x.sha, ["ml" + x.u], "pemain lain hanya sidik profil ML: tidak ganda di dalam tim");
+  const s1 = { 1: { follow_esports_path: "SAMA", follow_ppdt_path: "SAMA" } };
+  assert.equal(N.nilaiTim(TIM, baca, null, s1).hasil, "lolos", "satu screenshot daftar Mengikuti untuk kedua akun boleh");
+  const s2 = { 1: { profil_ml_path: "X", follow_ppdt_path: "X" } };
+  assert.match(N.nilaiTim(TIM, baca, null, s2).ringkas, /Berkas yang sama persis diunggah untuk profil ML dan follow @ditjen_ppdt/);
+});
+
+await uji("bukti follow: tombol utama profil yang menentukan, bukan kartu 'Disarankan untuk Anda'", () => {
+  const p = (teks, warna, status, profil = "ditjen_ppdt") => N.statusFollow({ halaman: "profil_akun", username_profil: profil, tombol_profil_teks: teks, tombol_profil_warna: warna, status }, "ditjen_ppdt");
+  assert.equal(p("Follo…", "abu", "belum_mengikuti"), "mengikuti", "kasus nyata 16 Nov: tombol abu terpotong, AI terkecoh tombol biru saran");
+  assert.equal(p("Meng…", "tidak_ada", "belum_mengikuti"), "mengikuti", "teks Mengikuti terpotong");
+  assert.equal(p("Ikuti", "biru", "mengikuti"), "belum_mengikuti");
+  assert.equal(p("Follow", "biru", "tidak_terlihat"), "belum_mengikuti");
+  assert.equal(p("Mengikuti", "abu", "mengikuti", "pppasn.kemendesa"), "mengikuti", "profil akun lain: pakai status (akun_terlihat yang menyaring)");
+  assert.equal(N.statusFollow({ halaman: "daftar_mengikuti", status: "mengikuti" }, "ditjen_ppdt"), "mengikuti");
+  const baca = Object.fromEntries(TIM.pemain.map((x, i) => [x.urutan, bacaBaik(x, i)]));
+  Object.assign(baca[1].follow_ppdt_path, { halaman: "profil_akun", tombol_profil_teks: "Follo…", tombol_profil_warna: "abu", status: "belum_mengikuti" });
+  assert.equal(N.nilaiTim(TIM, baca, null, {}).hasil, "lolos");
 });
 
 await uji("nilaiTim: identitas apa pun yang memuat alamat; satu provinsi cukup, beda kabupaten = info", () => {
