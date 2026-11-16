@@ -251,6 +251,24 @@ select:disabled, input:disabled { background: #eef1f8; color: #8a92aa; }
 .tutup-box .bb-sisa { display: block; font: 400 56px/1.1 var(--judul); letter-spacing: .04em; color: var(--ungu); margin: 14px 0; }
 .tutup-box small { display: block; font-weight: 500; font-size: 14px; max-width: 520px; margin: 0 auto; }
 
+/* ---------- Perbaikan berkas oleh kapten (perbaiki.html) ---------- */
+.pb-tim { margin-bottom: 14px; }
+.pb-tim b { display: block; font: 400 clamp(32px, 6vw, 42px)/1.05 var(--judul); letter-spacing: .02em; color: var(--ungu-tua); overflow-wrap: anywhere; }
+.pb-tim small { display: block; color: var(--teks-2); font-size: 14px; font-weight: 600; }
+.pb-kode { font-weight: 800; font-size: 13px; letter-spacing: .06em; color: var(--magenta); }
+.pb-kabar { padding: 12px 14px; border-left: 4px solid var(--ungu); background: #fff; font-size: 15px; margin-bottom: 16px; }
+.pb-kabar.pb-ok { border-color: var(--hijau); background: rgba(37, 160, 90, .07); }
+.pb-kabar.pb-perlu { border-color: var(--merah); background: rgba(179, 38, 30, .05); }
+.pb-saran { margin: 4px 0 10px; padding-left: 20px; font-size: 14.5px; color: var(--merah); font-weight: 600; }
+.pb-saran li { margin-bottom: 4px; }
+.pb-pemain details { margin-top: 4px; }
+.pb-pemain summary { cursor: pointer; font-weight: 700; font-size: 14px; color: var(--ungu); margin-bottom: 10px; }
+.pb-pemain.ada-catatan legend { color: var(--merah); }
+label.isian.perlu input { border-color: var(--merah); }
+.jatuhan.perlu { border: 2px solid var(--merah); background: rgba(179, 38, 30, .04); }
+.btn-wa.btn-kecil { font-size: 13px; }
+small.jejak-kapten { margin-top: 4px; white-space: nowrap; }
+
 /* ---------- Pertandingan ---------- */
 .grup-judul { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 12px; margin: 28px 0 10px; }
 .grup-judul h2 { font: 400 32px/1.05 var(--judul); letter-spacing: .02em; color: var(--ungu-tua); }

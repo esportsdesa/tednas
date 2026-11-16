@@ -34,6 +34,19 @@ yang terdaftar di dua tim.
 Panduan: [agen-ai/README.md](agen-ai/README.md). Migrasi: `supabase/migration-10-ai-periksa.sql`.
 Selama migrasi itu belum dijalankan, halaman admin tetap berjalan seperti biasa tanpa kolom AI.
 
+## Kabari kapten & perbaikan berkas
+
+Admin cukup menekan **WA Kapten** di baris tim. WhatsApp admin terbuka ke nomor kapten dengan pesan yang sudah jadi:
+- tim Menunggu: daftar perbaikan per pemain (catatan AI yang diubah jadi petunjuk untuk kapten, `public/js/saran.js`)
+  dan tautan khusus tim itu, `perbaiki.html#<kode>.<token>`;
+- tim Terverifikasi: kabar sudah terverifikasi;
+- keduanya ditutup tautan grup WhatsApp peserta.
+
+Lewat tautan itu kapten mengganti sendiri nama pemain, jenis kartu identitas, atau berkasnya. Berkas diunggah ke
+Drive seperti saat mendaftar. Agen AI lalu memeriksa ulang tim itu, dan tim langsung Terverifikasi bila semuanya
+sesuai. Tim yang sudah Terverifikasi tidak bisa diubah lewat tautan. Di halaman admin tercatat kapan kapten
+dikabari dan kapan ia memperbaiki. Migrasi: `supabase/migration-12-perbaiki.sql`.
+
 ## Captcha (Cloudflare Turnstile)
 
 Buat widget untuk hostname `esportsdesa.id` dan `tednas.vercel.app`. Site Key diisi di `public/js/config.js`. Secret Key dijalankan di SQL Editor:

@@ -3,7 +3,9 @@
 Agen ini memeriksa berkas setiap tim pendaftar secara otomatis, begitu tim mendaftar atau datanya berubah.
 
 - **Lolos semua pemeriksaan:** status tim langsung **Terverifikasi**. Di halaman admin tertulis "Terverifikasi · AI".
-- **Ada catatan:** tim tetap **Menunggu**. Admin melihat catatannya di kolom **Cek AI** dan memutuskan sendiri.
+- **Ada catatan:** tim tetap **Menunggu**. Admin melihat catatannya di kolom **Cek AI**. Tombol **WA Kapten**
+  mengirim catatan itu ke kapten sebagai petunjuk perbaikan, beserta tautan untuk mengganti berkas sendiri
+  (README utama, "Kabari kapten & perbaikan berkas"). Setelah kapten menyimpan, agen memeriksa ulang dengan sendirinya.
 - AI tidak pernah menolak tim, dan tidak pernah menimpa status yang sudah diubah admin.
 
 ## Yang diperiksa

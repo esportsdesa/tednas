@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Perbaiki Berkas Tim | TEDNas 2027</title>
+<link rel="icon" href="favicon.ico" sizes="48x48">
+<link rel="icon" type="image/png" sizes="192x192" href="img/ikon-192.png">
+<link rel="apple-touch-icon" href="img/ikon-180.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=League+Gothic&family=Montserrat:wght@500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div class="halaman-kepala"><div class="isi">
+  <h1>PERBAIKI BERKAS TIM</h1>
+  <p>Ganti berkas yang diberi catatan oleh panitia. Setelah disimpan, berkas dicek ulang otomatis, dan tim langsung terverifikasi kalau semuanya sudah sesuai.</p>
+</div></div>
+
+<main class="halaman">
+  <div class="form-sempit">
+    <div class="tutup-box" id="pb-muat">Memuat data tim...</div>
+    <div class="tutup-box" id="pb-galat" hidden></div>
+
+    <section id="pb" hidden>
+      <div class="pb-tim">
+        <span class="pb-kode" id="pb-kode"></span>
+        <b id="pb-nama"></b>
+        <small id="pb-desa"></small>
+      </div>
+      <div class="pb-kabar" id="pb-kabar" role="status"></div>
+      <ul class="pb-saran" id="pb-saran-tim" hidden></ul>
+
+      <form id="pb-form" novalidate>
+        <div id="pb-pemain"></div>
+        <p class="salah" id="salah" role="alert" hidden></p>
+        <div class="navi-form">
+          <span class="bantu" id="pb-ringkas"></span>
+          <button type="submit" class="btn btn-emas" id="pb-simpan">Simpan Perbaikan</button>
+        </div>
+      </form>
+
+      <div class="wa-grup" id="wa-grup" hidden>
+        <p><b>Sudah masuk grup WhatsApp peserta?</b><br>Jadwal dan pengumuman turnamen dikirim di sana.</p>
+        <a class="btn btn-wa" id="wa-grup-link" href="#" target="_blank" rel="noopener">Gabung Grup WhatsApp</a>
+      </div>
+    </section>
+  </div>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script src="js/config.js"></script>
+<script src="js/drive.js"></script>
+<script src="js/db.js"></script>
+<script src="js/common.js"></script>
+<script src="js/saran.js"></script>
+<script src="js/perbaiki.js"></script>
+</body>
+</html>

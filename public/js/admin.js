@@ -121,6 +121,26 @@
     catch (e) { U.pesan('Gagal: ' + e.message, 'gagal'); }
   };
 
+  /* ---------- WA Kapten (migrasi 12): satu klik → WhatsApp admin terbuka dengan pesan siap kirim ---------- */
+  const jejakKapten = (t) => [t.kapten_dikabari && `Dikabari ${U.waktu(t.kapten_dikabari)}`, t.perbaiki_pada && `Diperbaiki kapten ${U.waktu(t.perbaiki_pada)}`]
+    .filter(Boolean).map((x) => `<small class="jejak-kapten">${esc(x)}</small>`).join('');
+  // Bentuk catatan AI yang sama dengan tednas_perbaiki_lihat: ganda hanya yang membuat tim ini "cek", tanpa kode tim lain.
+  const aiUntukKapten = (t) => (t.ai && t.ai.rincian ? {
+    tim: t.ai.rincian.tim || [], pemain: t.ai.rincian.pemain || [],
+    ganda: (t.ai.ganda || []).filter(gandaCek).map((g) => ({ u: g.u, jenis: g.jenis, u_lain: g.kode === t.kode ? g.u_lain : null }))
+  } : null);
+  async function waKapten(t) {
+    const w = window.open('', '_blank'); // dibuka lebih dulu: browser memblokir window.open setelah await
+    try {
+      const { token } = await DB.kabariKapten(t.id);
+      const tautan = new URL(`perbaiki.html#${t.kode}.${token}`, location.href).href;
+      const teks = SARAN.pesanWa({ tim: t, ai: aiUntukKapten(t), tautan, grup: (window.APP_CONFIG || {}).WA_GRUP });
+      const url = `https://wa.me/${t.wa_kapten}?text=${encodeURIComponent(teks)}`;
+      if (w) { w.opener = null; w.location = url; } else location.href = url;
+      muatTim();
+    } catch (e) { if (w) w.close(); U.pesan('Pesan WA gagal disiapkan: ' + e.message, 'gagal'); }
+  }
+
   const saringTim = () => ({ cari: $('#t-cari').value, prov: $('#t-prov').value, status: $('#t-status').value, ai: DB.aiAda ? $('#t-ai').value : '' });
 
   async function muatTim() {
@@ -136,8 +156,9 @@
         <td><span class="lencana ${esc(t.status)}"${t.status_oleh === 'ai' ? ' title="Diubah otomatis oleh agen AI"' : ''}>${t.status === 'terverifikasi' ? 'Terverifikasi' : 'Menunggu'}${t.status_oleh === 'ai' ? ' · AI' : ''}</span></td>
         ${selAi(t)}
         <td><div class="aksi-sel">
+          <button class="btn btn-wa btn-kecil" data-wa="${esc(t.id)}" title="${t.status === 'terverifikasi' ? 'Kabari kapten bahwa timnya sudah terverifikasi' : 'Kirim daftar perbaikan dari catatan AI + tautan perbaikan berkas untuk kapten'}">WA Kapten</button>
           <button class="btn btn-kecil ${t.status === 'terverifikasi' ? 'btn-garis-gelap' : ''}" data-ver="${esc(t.id)}">${t.status === 'terverifikasi' ? 'Batalkan' : 'Verifikasi'}</button>
-          <button class="btn btn-bahaya btn-kecil" data-hapus="${esc(t.id)}">Hapus</button></div></td></tr>`).join('')
+          <button class="btn btn-bahaya btn-kecil" data-hapus="${esc(t.id)}">Hapus</button></div>${jejakKapten(t)}</td></tr>`).join('')
         : `<tr><td colspan="${DB.aiAda ? 8 : 7}">Tidak ada tim.</td></tr>`;
       $('#t-kol-ai').hidden = !DB.aiAda;
       const akhir = Math.min(dari + PER_HAL, total);
@@ -164,6 +185,8 @@
           ${p.izin_path ? `<button class="btn btn-garis-gelap btn-kecil" data-buka="${esc(p.izin_path)}">Surat Izin</button>` : ''}</div>${aiPemain(t, p)}</div>`).join('')
         || '<p>Data pemain tidak ada.</p>';
       $('#d-pemain').showModal();
+    } else if (b.dataset.wa) {
+      waKapten(cari(b.dataset.wa));
     } else if (b.dataset.ver) {
       const t = cari(b.dataset.ver);
       try { await DB.setStatusTim(t.id, t.status === 'terverifikasi' ? 'menunggu' : 'terverifikasi'); muatTim(); muatRingkas(); }

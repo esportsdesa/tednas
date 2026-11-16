@@ -68,6 +68,23 @@
   U.peraturanHtml = () => U.PERATURAN.map(([j, isi]) => `<h3>${U.esc(j)}</h3><ul>${isi.map((x) => `<li>${U.esc(x)}</li>`).join('')}</ul>`
     + (j.startsWith('D.') ? `<p class="unduh-izin">Format surat izin orang tua/wali: ${U.unduhIzin}</p>` : '')).join('');
 
+  /* Foto diperkecil di HP pengguna (sisi terpanjang 1280 px, JPEG 0,72) sebelum diunggah: hemat kuota dan
+     penyimpanan Drive. Dipakai halaman daftar dan halaman perbaikan berkas. PDF & yang gagal dibaca: apa adanya. */
+  U.kecilkanFoto = async (f) => {
+    if (!f.type.startsWith('image/')) return f;
+    try {
+      const gambar = await createImageBitmap(f);
+      const skala = Math.min(1, 1280 / Math.max(gambar.width, gambar.height));
+      const c = document.createElement('canvas');
+      c.width = Math.round(gambar.width * skala); c.height = Math.round(gambar.height * skala);
+      c.getContext('2d').drawImage(gambar, 0, 0, c.width, c.height);
+      gambar.close();
+      const blob = await new Promise((ok) => c.toBlob(ok, 'image/jpeg', 0.72));
+      if (!blob || blob.size >= f.size) return f;
+      return new File([blob], f.name.replace(/\.\w+$/, '') + '.jpg', { type: 'image/jpeg' });
+    } catch (e) { return f; }
+  };
+
   U.pesan = (t, jenis) => {
     let w = U.$('#toasts');
     if (!w) { w = document.createElement('div'); w.id = 'toasts'; w.setAttribute('aria-live', 'polite'); document.body.append(w); }

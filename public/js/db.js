@@ -106,6 +106,10 @@
       },
       async statistikAi() { return this.aiAda ? cek(await sb.rpc('tednas_ai_statistik')) : null; },
       async periksaUlangAi(timId) { cek(await sb.from('tednas_ai').delete().eq('tim_id', timId)); },
+      /* Perbaikan berkas oleh kapten (migrasi 12): admin mengambil token tautan, kapten membuka & menyimpan. */
+      async kabariKapten(timId) { return cek(await sb.rpc('tednas_kabari_kapten', { p_tim: timId })); },
+      async perbaikiLihat(kode, token) { return cek(await sb.rpc('tednas_perbaiki_lihat', { p_kode: kode, p_token: token })); },
+      async perbaikiSimpan(kode, token, pemain) { return cek(await sb.rpc('tednas_perbaiki_simpan', { p_kode: kode, p_token: token, p_pemain: pemain })); },
       async hapusTim(t) {
         cek(await sb.from('tednas_tim').delete().eq('id', t.id));
         // Berkas Google Drive tidak dihapus dari sini: Apps Script menandai tim & foldernya "[DIHAPUS]".
@@ -216,6 +220,19 @@
       aiAda: false,
       async statistikAi() { return null; },
       async periksaUlangAi() {},
+      // Mode lokal: token = kode tim (tanpa rahasia), cukup untuk mencoba alurnya di browser.
+      async kabariKapten(id) { const t = tim().find((x) => x.id === id); tulis('tim', tim().map((x) => (x.id === id ? { ...x, kapten_dikabari: new Date().toISOString() } : x))); return { token: t.kode.toLowerCase() }; },
+      async perbaikiLihat(kode, token) {
+        const t = tim().find((x) => x.kode === kode && token === kode.toLowerCase()); if (!t) throw new Error('TAUTAN_TIDAK_SAH');
+        return { ...pub(t), nama_kapten: t.nama_kapten, ai: null, pemain: t.pemain.map((p) => ({ urutan: p.urutan, nama: p.nama, dokumen_jenis: p.dokumen_jenis, ada_izin: !!p.izin_path })) };
+      },
+      async perbaikiSimpan(kode, token, ubah) {
+        const t = tim().find((x) => x.kode === kode && token === kode.toLowerCase()); if (!t) throw new Error('TAUTAN_TIDAK_SAH');
+        if (t.status !== 'menunggu') throw new Error('SUDAH_TERVERIFIKASI');
+        t.pemain = t.pemain.map((p) => { const u = ubah.find((x) => x.urutan === p.urutan); return u ? { ...p, ...u, nama: (u.nama || p.nama).trim() } : p; });
+        t.nama_kapten = t.pemain[0].nama; t.perbaiki_pada = new Date().toISOString();
+        tulis('tim', tim().map((x) => (x.id === t.id ? t : x))); return { ok: true, diubah: ubah.length };
+      },
       async hapusTim(t) {
         tulis('tim', tim().filter((x) => x.id !== t.id));
         tulis('match', match().map((m) => ({ ...m, tim_a: m.tim_a === t.id ? null : m.tim_a, tim_b: m.tim_b === t.id ? null : m.tim_b, pemenang: m.pemenang === t.id ? null : m.pemenang })));

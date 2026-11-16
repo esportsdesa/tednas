@@ -1,6 +1,6 @@
 /**
  * Uji SQL TEDNas di Postgres SUNGGUHAN (container sementara di server jot, dibuang setelahnya):
- * skema-tednas.sql + migration-8-drive.sql + migration-9-cermin-drive.sql + migration-10-ai-periksa.sql di atas tiruan Supabase (uji/sql-tiruan-supabase.sql).
+ * skema-tednas.sql + migration-8-drive.sql + migration-9-cermin-drive.sql + migration-10-ai-periksa.sql + migration-12-perbaiki.sql di atas tiruan Supabase (uji/sql-tiruan-supabase.sql).
  * Tanda HMAC dibuat dengan crypto Node — sama dengan Utilities.computeHmacSha256Signature di Apps Script —
  * jadi uji ini juga membuktikan pgcrypto menghitung tanda yang sama.
  *   node uji/uji-sql.mjs            (butuh ssh jot + docker postgres:17-alpine di sana)
@@ -422,6 +422,95 @@ ${harusGagal(`select public.tednas_ai_sidik(gen_random_uuid())`, "permission den
 ${harusGagal(`select public.tednas_ai_ganda_hitung(gen_random_uuid())`, "permission denied")}
 ${harusGagal(`select public.tednas_ai_terapkan(gen_random_uuid())`, "permission denied", "authenticated")}
 ${harusGagal(`select ai_rahasia from public.tednas_rahasia`, "permission denied", "authenticated")}
+
+-- 14. kapten memperbaiki berkas lewat tautan (migrasi 12): token dari admin, hanya tim menunggu, berkas bertanda, AI memeriksa ulang
+set role anon;
+${daftar("Perbaiki", "081234567820", "35.07.18.2030", pemain(20))};
+reset role;
+create temp table _pb (id uuid, kode text, tok text, versi int, kirim int);
+grant all on _pb to anon, authenticated;
+insert into _pb (id, kode, versi) select id, kode, drive_versi from public.tednas_tim where wa_kapten = '6281234567820';
+insert into public.tednas_ai (tim_id, sidik, hasil, akhir, rincian, ganda)
+  select id, public.tednas_ai_sidik(id), 'cek', 'cek',
+    ${q(JSON.stringify({ tim: [], pemain: [{ u: 2, butir: [{ b: "profil_ml", s: "cek", t: "ID akun Mobile Legends tidak terlihat." }, { b: "identitas", s: "ok", t: "KTP sesuai." }], data: { nik: "3507********0003", alamat: "RAHASIA ALAMAT" } }] }))}::jsonb,
+    ${q(JSON.stringify([{ u: 3, jenis: "nik", kode: "TED-00001", u_lain: 2, dulu: true }, { u: 4, jenis: "ml", kode: "TED-00002", u_lain: 1, dulu: false }]))}::jsonb
+  from _pb;
+set uji.uid = '';
+${harusGagal(`select public.tednas_kabari_kapten((select id from _pb))`, "BUKAN_ADMIN", "authenticated")}
+${harusGagal(`select public.tednas_kabari_kapten((select id from _pb))`, "permission denied")}
+set uji.uid = '00000000-0000-0000-0000-00000000a001';
+set role authenticated;
+do $u$ declare v json; begin
+  v := public.tednas_kabari_kapten((select id from _pb));
+  assert v->>'token' ~ '^[0-9a-f]{40}$', 'token 40 hex';
+  update _pb set tok = v->>'token';
+end $u$;
+reset role;
+do $u$ begin
+  assert (select kapten_dikabari from public.tednas_tim where id = (select id from _pb)) is not null, 'waktu dikabari dicatat';
+  assert (select drive_versi from public.tednas_tim where id = (select id from _pb)) = (select versi from _pb), 'dikabari tidak menulis ulang Sheet';
+  assert (select tok from _pb) <> public.tednas_perbaiki_token((select id from public.tednas_tim where kode = 'TED-00001')), 'token beda per tim';
+end $u$;
+${harusGagal(`select public.tednas_perbaiki_lihat((select kode from _pb), repeat('0', 40))`, "TAUTAN_TIDAK_SAH")}
+${harusGagal(`select public.tednas_perbaiki_lihat('TED-00001', (select tok from _pb))`, "TAUTAN_TIDAK_SAH")}
+${harusGagal(`select public.tednas_perbaiki_lihat((select kode from _pb), upper((select tok from _pb)))`, "TAUTAN_TIDAK_SAH")}
+set role anon;
+do $u$ declare v json; begin
+  v := public.tednas_perbaiki_lihat(lower((select kode from _pb)), (select tok from _pb));
+  assert v->>'status' = 'menunggu' and json_array_length(v->'pemain') = 5 and v->>'nama_kapten' = 'Pemain 20-1', 'isi tim';
+  assert (v->'ai'->>'segar')::boolean and v->'ai'->>'akhir' = 'cek', 'hasil AI segar';
+  assert json_array_length(v->'ai'->'pemain'->0->'butir') = 1 and v->'ai'->'pemain'->0->'butir'->0->>'b' = 'profil_ml', 'hanya catatan cek';
+  assert json_array_length(v->'ai'->'ganda') = 1 and v->'ai'->'ganda'->0->>'u_lain' is null, 'ganda tanpa tim lain';
+  assert position('gdrive/' in v::text) = 0 and position('6281234567820' in v::text) = 0 and position('RAHASIA ALAMAT' in v::text) = 0
+     and position('*****' in v::text) = 0 and position('TED-00001' in v::text) = 0, 'tanpa path, nomor WA, NIK, alamat, kode tim lain';
+end $u$;
+reset role;
+${harusGagal(`select public.tednas_perbaiki_simpan((select kode from _pb), repeat('a', 40), '[{"urutan":1,"nama":"Siapa Saja"}]')`, "TAUTAN_TIDAK_SAH")}
+${harusGagal(`select public.tednas_perbaiki_simpan((select kode from _pb), (select tok from _pb), ${q(JSON.stringify([{ urutan: 2, profil_ml_path: `gdrive/${id(2099)}.png` }]))})`, "PROFIL_ML_TIDAK_ADA")}
+${harusGagal(`select public.tednas_perbaiki_simpan((select kode from _pb), (select tok from _pb), ${q(JSON.stringify([{ urutan: 2, profil_ml_path: tanda(`gdrive/${id(2098)}.pdf`) }]))})`, "PROFIL_ML_TIDAK_ADA")}
+${harusGagal(`select public.tednas_perbaiki_simpan((select kode from _pb), (select tok from _pb), ${q(JSON.stringify([{ urutan: 2, follow_ppdt_path: "dokumen/lama-0a.jpg" }]))})`, "FOLLOW_TIDAK_ADA")}
+${harusGagal(`select public.tednas_perbaiki_simpan((select kode from _pb), (select tok from _pb), ${q(JSON.stringify([{ urutan: 2, dokumen_path: p1[0].dokumen_path }]))})`, "DOKUMEN_TIDAK_ADA")}
+${harusGagal(`select public.tednas_perbaiki_simpan((select kode from _pb), (select tok from _pb), ${q(JSON.stringify([{ urutan: 2, dokumen_path: tanda(`gdrive/${id(2096)}.jpg`) }, { urutan: 3, dokumen_path: tanda(`gdrive/${id(2096)}.jpg`) }]))})`, "DOKUMEN_TIDAK_ADA")}
+${harusGagal(`select public.tednas_perbaiki_simpan((select kode from _pb), (select tok from _pb), '[{"urutan":6,"nama":"Cadangan Baru"}]')`, "PEMAIN_TIDAK_ADA")}
+${harusGagal(`select public.tednas_perbaiki_simpan((select kode from _pb), (select tok from _pb), '[{"urutan":2,"nama":"X"}]')`, "PEMAIN_TIDAK_LENGKAP")}
+${harusGagal(`select public.tednas_perbaiki_simpan((select kode from _pb), (select tok from _pb), '[{"urutan":2,"dokumen_jenis":"Paspor"}]')`, "DOKUMEN_TIDAK_ADA")}
+${harusGagal(`select public.tednas_perbaiki_simpan((select kode from _pb), (select tok from _pb), '[]')`, "ISIAN_TIDAK_SAH")}
+do $u$ begin
+  assert (select perbaiki_pada from public.tednas_tim where id = (select id from _pb)) is null, 'percobaan gagal tidak mengubah apa pun';
+  assert (select profil_ml_path from public.tednas_pemain where tim_id = (select id from _pb) and urutan = 2) = ${q(`gdrive/${id(2007)}.png`)}, 'berkas lama utuh';
+end $u$;
+update _pb set kirim = (select count(*) from net._kirim);
+set role anon;
+do $u$ declare v json; begin
+  v := public.tednas_perbaiki_simpan((select kode from _pb), (select tok from _pb),
+    ${q(JSON.stringify([{ urutan: 1, nama: " Kapten Baru " }, { urutan: 2, dokumen_jenis: "KK", profil_ml_path: tanda(`gdrive/${id(2097)}.png`) }, { urutan: 5, izin_path: tanda(`gdrive/${id(2095)}.pdf`) }]))});
+  assert (v->>'diubah')::int = 4, 'empat perubahan: nama, jenis, profil ML, izin';
+end $u$;
+reset role;
+do $u$ declare x record; begin
+  select t.*, p.profil_ml_path, p.dokumen_jenis, p.nama as nama1 into x from public.tednas_tim t
+    join public.tednas_pemain p on p.tim_id = t.id and p.urutan = 2 where t.id = (select id from _pb);
+  assert x.nama_kapten = 'Kapten Baru' and (select nama from public.tednas_pemain where tim_id = x.id and urutan = 1) = 'Kapten Baru', 'nama kapten';
+  assert x.profil_ml_path = ${q(`gdrive/${id(2097)}.png`)} and x.dokumen_jenis = 'KK', 'berkas & jenis baru (tanpa tanda)';
+  assert (select izin_path from public.tednas_pemain where tim_id = x.id and urutan = 5) = ${q(`gdrive/${id(2095)}.pdf`)}, 'izin PDF';
+  assert x.perbaiki_pada is not null and x.drive_rapi = 0 and x.status = 'menunggu', 'dicatat + berkas dirapikan ulang';
+  assert x.drive_versi > (select versi from _pb), 'Sheet & cermin ikut diperbarui';
+  assert (select count(*) from net._kirim) > (select kirim from _pb), 'kabar ke Drive';
+  assert (select body->'tim'->>'kode' from net._kirim order by id desc limit 1) = x.kode, 'kabar tim ini';
+  assert (select sidik from public.tednas_ai where tim_id = x.id) <> public.tednas_ai_sidik(x.id), 'sidik berubah';
+  assert exists (select 1 from json_array_elements(public.tednas_ai_antre(${q(RAHASIA3)}, 1, 50)->'tim') e where (e->>'id')::uuid = x.id), 'AI memeriksa ulang';
+end $u$;
+set role anon;
+do $u$ begin
+  assert not (public.tednas_perbaiki_lihat((select kode from _pb), (select tok from _pb))->'ai'->>'segar')::boolean, 'halaman kapten: sedang dicek ulang';
+end $u$;
+reset role;
+update public.tednas_tim set status = 'terverifikasi' where id = (select id from _pb);
+${harusGagal(`select public.tednas_perbaiki_simpan((select kode from _pb), (select tok from _pb), '[{"urutan":1,"nama":"Sesudah Verifikasi"}]')`, "SUDAH_TERVERIFIKASI")}
+${harusGagal(`select public.tednas_perbaiki_token((select id from _pb))`, "permission denied")}
+${harusGagal(`select public.tednas_perbaiki_token((select id from _pb))`, "permission denied", "authenticated")}
+${harusGagal(`select public.tednas_perbaiki_tim('TED-00001', repeat('0', 40))`, "permission denied")}
+${harusGagal(`select perbaiki_rahasia from public.tednas_rahasia`, "permission denied", "authenticated")}
 \\echo SEMUA_LULUS
 `;
 
@@ -431,8 +520,9 @@ const skema = baca("supabase/schema-tednas.sql").replace(/^create extension if n
 const migrasi = baca("supabase/migration-8-drive.sql").replace(/^create extension if not exists pg_net with schema extensions;$/m, "-- (pg_net: tiruan)");
 const migrasi9 = baca("supabase/migration-9-cermin-drive.sql");
 const migrasi10 = baca("supabase/migration-10-ai-periksa.sql");
+const migrasi12 = baca("supabase/migration-12-perbaiki.sql");
 writeFileSync(f, ["\\set ON_ERROR_STOP 1", "\\set QUIET 1", "\\set VERBOSITY verbose", "set client_min_messages = warning;", baca("uji/sql-tiruan-supabase.sql"), skema,
-  "-- migrasi 8, 9 & 10 dua kali: harus aman dijalankan ulang", migrasi, migrasi, migrasi9, migrasi9, migrasi10, migrasi10, SQL_BANTU, uji, uji2].join("\n")
+  "-- migrasi 8, 9, 10 & 12 dua kali: harus aman dijalankan ulang", migrasi, migrasi, migrasi9, migrasi9, migrasi10, migrasi10, migrasi12, migrasi12, SQL_BANTU, uji, uji2].join("\n")
   .replace(/^-- (\d+)\. (.*)$/gm, (_, n, t) => `\\echo LANGKAH ${n}: ${t}`));
 const NAMA = "tednas-uji-pg";
 const ssh = (cmd, input) => execFileSync("ssh", ["-o", "ConnectTimeout=15", "jot", cmd], { input, encoding: "utf8", stdio: ["pipe", "pipe", "pipe"] });
@@ -443,7 +533,7 @@ try {
   catch (e) { console.error(`GAGAL:\n${e.stdout ?? ""}\n${e.stderr ?? e.message}`); process.exitCode = 1; }
   if (keluar !== undefined) {
     if (!keluar.includes("SEMUA_LULUS")) { console.error(keluar); process.exitCode = 1; }
-    else console.log("uji SQL lulus (skema + migrasi 8, 9 & 10 di Postgres 17, 13 kelompok)");
+    else console.log("uji SQL lulus (skema + migrasi 8, 9, 10 & 12 di Postgres 17, 14 kelompok)");
   }
 } finally {
   try { ssh(`docker rm -f ${NAMA} >/dev/null 2>&1; true`); } catch { /* */ }

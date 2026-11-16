@@ -34,7 +34,8 @@ const AI_CEK = { ...AI_LOLOS, akhir: "cek", hasil: "lolos", ringkas: "1 catatan"
     pemain: [1, 2, 3, 4, 5].map((u) => ({ u, nama: `Pemain 2${u}`, butir: u === 3 ? [ok("KTP sesuai, umur 19."), { b: "follow_ppdt", s: "cek", t: "Bukti follow menunjukkan @ditjen_ppdt BELUM diikuti (tombol \"Ikuti\")." }, { b: "identitas", s: "info", t: "Domisili di Kota Malang, tim di Kabupaten Malang (masih satu provinsi)." }] : [ok("a"), ok("b")], data: { dok: "KTP", nik: "3507********0003", lahir: "2007-01-01", umur: 20, alamat: "SUMBERPASIR, PAKIS, KABUPATEN MALANG" } })) } };
 
 let dunia = "ai"; // "ai" | "tanpa-ai"
-const catat = { tim: [], ubah: [], hapus: [] };
+const catat = { tim: [], ubah: [], hapus: [], kabari: [] };
+const TOKEN = "ab".repeat(20);
 const DATA = () => [tim(3, null), tim(2, AI_CEK), tim(1, AI_LOLOS, "terverifikasi", "ai")];
 
 const JENIS = { ".html": "text/html; charset=utf-8", ".js": "text/javascript", ".css": "text/css", ".json": "application/json", ".png": "image/png", ".jpg": "image/jpeg", ".ico": "image/x-icon", ".pdf": "application/pdf" };
@@ -57,6 +58,7 @@ const srv = createServer(async (req, res) => {
     if (p === "/rest/v1/rpc/tednas_statistik") return kirim(200, { total: 3, terverifikasi: 0, kabupaten: 1, provinsi: 1, per_provinsi: [] });
     if (p === "/rest/v1/rpc/tednas_ai_statistik") return kirim(200, { otomatis: 1, cek: 1, galat: 0, antre: 1 });
     if (p === "/rest/v1/tednas_tim" && req.method === "PATCH") { catat.ubah.push({ q, isi: JSON.parse(isi) }); return kirim(204); }
+    if (p === "/rest/v1/rpc/tednas_kabari_kapten") { catat.kabari.push(JSON.parse(isi)); return kirim(200, { token: TOKEN, pada: "2026-11-17T04:00:00Z" }); }
     if (p === "/rest/v1/tednas_ai" && req.method === "DELETE") { catat.hapus.push(q); return kirim(204); }
     if (p === "/rest/v1/tednas_tim") {
       catat.tim.push(q);
@@ -148,6 +150,31 @@ await uji("admin tetap bisa membatalkan status yang diubah AI", async () => {
   assert.equal(catat.ubah.length, 1);
   assert.match(catat.ubah[0].q, /id=eq\.00000000-0000-0000-0000-000000000001/);
   assert.deepEqual(catat.ubah[0].isi, { status: "menunggu" });
+});
+
+await uji("WA Kapten: satu klik → WhatsApp terbuka dengan daftar perbaikan per pemain + tautan perbaikan", async () => {
+  await halaman.context().route("https://wa.me/**", (r) => r.fulfill({ status: 200, contentType: "text/html", body: "<title>wa</title>" }));
+  const buka = async (id) => {
+    const [pop] = await Promise.all([halaman.waitForEvent("popup"), halaman.click(`[data-wa='${id}']`)]);
+    await pop.waitForURL(/^https:\/\/wa\.me\//);
+    const u = new URL(pop.url()); await pop.close();
+    return u;
+  };
+  const u = await buka("00000000-0000-0000-0000-000000000002");
+  assert.equal(u.pathname, "/628123456782", "langsung ke nomor kapten");
+  assert.deepEqual(catat.kabari, [{ p_tim: "00000000-0000-0000-0000-000000000002" }]);
+  const teks = u.searchParams.get("text");
+  assert.ok(teks.startsWith("Halo Kak Kapten 2, kapten tim *Tim Desa 2* (TED-00002), Desa Desa 2."), teks);
+  assert.ok(teks.includes("*Pemain 2: Pemain 22*\n• NIK pemain ini sudah terdaftar di tim lain yang mendaftar lebih dulu. 1 orang hanya boleh di 1 tim"), teks);
+  assert.ok(teks.includes('*Pemain 3: Pemain 23*\n• @ditjen_ppdt belum di-follow (tombolnya masih "Ikuti")'), teks);
+  assert.doesNotMatch(teks, /TED-00001|TED-00003|satu provinsi|Pemain 4:/, "tanpa kode tim lain, catatan info, atau ganda yang daftar belakangan");
+  assert.ok(teks.includes(`${ASAL}/perbaiki.html#TED-00002.${TOKEN}`), "tautan perbaikan khusus tim");
+  assert.ok(teks.endsWith("Kalau semuanya sesuai, tim langsung terverifikasi.\n\nPanitia TEDNas 2027"), teks);
+
+  const u2 = await buka("00000000-0000-0000-0000-000000000001");
+  assert.ok(u2.searchParams.get("text").includes("sudah *TERVERIFIKASI*"));
+  assert.ok(!u2.searchParams.get("text").includes("perbaiki.html"));
+  assert.equal(catat.kabari.length, 2);
 });
 
 await uji("saringan Lolos AI memakai join inner + akhir=lolos", async () => {

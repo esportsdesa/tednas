@@ -221,20 +221,7 @@
 
   /* ---------- Berkas per pemain ---------- */
   /* Foto diperkecil di HP pengguna: 12 berkas per tim akan cepat menghabiskan penyimpanan dan kuota data. */
-  async function kecilkan(f) {
-    if (!f.type.startsWith('image/')) return f;
-    try {
-      const gambar = await createImageBitmap(f);
-      const skala = Math.min(1, 1280 / Math.max(gambar.width, gambar.height));
-      const c = document.createElement('canvas');
-      c.width = Math.round(gambar.width * skala); c.height = Math.round(gambar.height * skala);
-      c.getContext('2d').drawImage(gambar, 0, 0, c.width, c.height);
-      gambar.close();
-      const blob = await new Promise((ok) => c.toBlob(ok, 'image/jpeg', 0.72));
-      if (!blob || blob.size >= f.size) return f;
-      return new File([blob], f.name.replace(/\.\w+$/, '') + '.jpg', { type: 'image/jpeg' });
-    } catch (e) { return f; }
-  }
+  const kecilkan = U.kecilkanFoto;
 
   const statusBerkas = (f) => (f ? `<span class="berkas-ok">${esc(f.name)}</span>` : '');
 

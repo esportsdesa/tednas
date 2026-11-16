@@ -39,6 +39,14 @@ const uji = async (nama, f) => {
 
 /* ── situs statis + Supabase tiruan di satu server ────────────────────── */
 let pendaftaran = 0;
+const TOKEN = "cd".repeat(20), perbaikan = [];
+// tednas_perbaiki_lihat tiruan: TED-00001 dengan dua catatan AI (pemain 2 ID ML, pemain 3 nama); setelah disimpan = dicek ulang.
+const dataPerbaiki = () => ({ kode: "TED-00001", nama_tim: "Garuda Mangliawan", nama_kapten: "A Pemain 1", desa: "Mangliawan", kabupaten: "KAB. MALANG",
+  provinsi: "JAWA TIMUR", status: "menunggu", perbaiki_pada: perbaikan.length ? "2026-11-17T05:00:00Z" : null,
+  pemain: [1, 2, 3, 4, 5].map((u) => ({ urutan: u, nama: `A Pemain ${u}`, dokumen_jenis: "KTP", ada_izin: u === 5 })),
+  ai: { akhir: "cek", pada: "2026-11-17T04:00:00Z", segar: !perbaikan.length, tim: [], ganda: [],
+    pemain: [{ u: 2, butir: [{ b: "profil_ml", t: "ID akun Mobile Legends tidak terlihat." }] },
+      { u: 3, butir: [{ b: "identitas", t: 'Nama di dokumen "A PEMAIN TIGA" tidak sama dengan nama terdaftar "A Pemain 3".' }] }] } });
 const JENIS = { ".html": "text/html; charset=utf-8", ".js": "text/javascript", ".css": "text/css", ".json": "application/json", ".png": "image/png", ".jpg": "image/jpeg", ".ico": "image/x-icon" };
 const srv = createServer(async (req, res) => {
   const u = new URL(req.url, "http://x");
@@ -72,6 +80,20 @@ async function supabase(req, res, u) {
     const k = W.kabar("tim", { tim: W.paket(t) });
     assert.equal(k.ok, true, JSON.stringify(k));
     return kirim(200, { kode: t.kode });
+  }
+  if (u.pathname === "/sb/rest/v1/rpc/tednas_perbaiki_lihat") {
+    const b = JSON.parse(isi);
+    if (b.p_kode !== "TED-00001" || b.p_token !== TOKEN) return kirim(400, { code: "P0001", message: "TAUTAN_TIDAK_SAH" });
+    return kirim(200, dataPerbaiki());
+  }
+  if (u.pathname === "/sb/rest/v1/rpc/tednas_perbaiki_simpan") {
+    const b = JSON.parse(isi);
+    if (b.p_kode !== "TED-00001" || b.p_token !== TOKEN) return kirim(400, { code: "P0001", message: "TAUTAN_TIDAK_SAH" });
+    for (const p of b.p_pemain) for (const k of ["dokumen_path", "profil_ml_path", "follow_esports_path", "follow_ppdt_path", "izin_path"]) {
+      if (p[k] && !W.sahkan(p[k])) return kirim(400, { code: "P0001", message: "PROFIL_ML_TIDAK_ADA" });
+    }
+    perbaikan.push(b);
+    return kirim(200, { ok: true, diubah: 2 });
   }
   kirim(404, { message: `tiruan tidak tahu ${u.pathname}` });
 }
@@ -207,6 +229,44 @@ await uji("berkas ditolak Web App → pesan jelas menyebut berkasnya; kirim ulan
   gangguan = null;
   assert.equal(unggahan - awal, 21, `total unggahan ${unggahan - awal} (sebelum galat ${sebelum})`);
   assert.equal(pendaftaran, 3);
+});
+
+await uji("perbaikan oleh kapten: tautan dari WA → catatan per pemain → ganti berkas & nama → tersimpan, AI cek ulang", async () => {
+  // Tautan rusak / token salah: pesan jelas (halaman terpisah supaya 400-nya tidak tercatat sebagai galat halaman utama).
+  const lain = await ctx.newPage();
+  await lain.goto(`${ASAL}/perbaiki.html`);
+  await lain.waitForSelector("#pb-galat:not([hidden])");
+  assert.match(await lain.textContent("#pb-galat"), /tidak lengkap/);
+  await lain.goto(`${ASAL}/perbaiki.html#TED-00001.${"0".repeat(40)}`);
+  await lain.reload();
+  await lain.waitForSelector("#pb-galat:not([hidden])");
+  assert.match(await lain.textContent("#pb-galat"), /Tautan ini tidak berlaku/);
+  await lain.close();
+
+  const awal = unggahan;
+  await halaman.goto(`${ASAL}/perbaiki.html#TED-00001.${TOKEN}`);
+  await halaman.waitForSelector("#pb:not([hidden])");
+  assert.equal(await halaman.textContent("#pb-nama"), "Garuda Mangliawan");
+  assert.match(await halaman.textContent("#pb-kabar"), /Ada 2 catatan/);
+  assert.match(await halaman.textContent("[data-u='2'] .pb-saran"), /belum menampilkan ID akun/);
+  assert.equal(await halaman.$$eval("[data-u='2'] .jatuhan.perlu input", (x) => x.map((i) => i.dataset.file).join()), "ml", "isian yang perlu diganti disorot");
+  assert.equal(await halaman.$$eval("[data-u='3'] label.isian.perlu [data-nama]", (x) => x.length), 1);
+  assert.equal(await halaman.$eval("[data-u='1'] details", (d) => d.open), false, "pemain tanpa catatan dilipat");
+  await halaman.click("#pb-simpan");
+  assert.match(await halaman.textContent("#salah"), /Belum ada yang diubah/);
+  await (await halaman.$("[data-u='2'] [data-file=ml]")).setInputFiles(PNG("perbaikan-ml"));
+  await halaman.waitForSelector("[data-u='2'] [data-status=ml] .berkas-ok");
+  await halaman.fill("[data-u='3'] [data-nama]", "A Pemain Tiga");
+  assert.equal(await halaman.textContent("#pb-ringkas"), "1 berkas baru, 2 pemain diubah");
+  await halaman.click("#pb-simpan");
+  await halaman.waitForFunction(() => /Perbaikan tersimpan/.test(document.querySelector("#pb-kabar").textContent));
+  assert.equal(unggahan - awal, 1, "hanya berkas yang diganti yang diunggah");
+  assert.equal(perbaikan.length, 1);
+  const [p2, p3] = perbaikan[0].p_pemain;
+  assert.equal(p2.urutan, 2); assert.ok(W.sahkan(p2.profil_ml_path), "path bertanda Web App"); assert.deepEqual(Object.keys(p2).sort(), ["profil_ml_path", "urutan"]);
+  assert.deepEqual(p3, { urutan: 3, nama: "A Pemain Tiga" });
+  assert.match(await halaman.textContent("#pb-kabar"), /dicek ulang otomatis.*sebelum perbaikan/);
+  assert.match(await halaman.getAttribute("#wa-grup-link", "href"), /^https:\/\/chat\.whatsapp\.com\//);
 });
 
 await uji("tanpa galat skrip di halaman", async () => { assert.deepEqual(galatKonsol, []); });
