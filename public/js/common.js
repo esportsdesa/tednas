@@ -85,6 +85,21 @@
     } catch (e) { return f; }
   };
 
+  /* Tautan komunitas ToT: esportsdesa.id/k/<nomor> dialihkan ke daftar?k=<nomor> (vercel.json); ?k= juga
+     diterima di halaman mana pun. Disimpan 30 hari di browser, supaya tetap tercatat walau pendaftar membuka
+     halaman lain dulu atau kembali besok. Tautan yang dibuka terakhir yang berlaku. */
+  const KUNCI_KOMUNITAS = 'tednas_ref_komunitas';
+  U.komunitas = {
+    ambil() {
+      const k = new URLSearchParams(location.search).get('k');
+      if (/^\d{1,6}$/.test(k || '')) return Number(k);
+      try { const r = JSON.parse(localStorage.getItem(KUNCI_KOMUNITAS)); return r && Date.now() - r.pada < 30 * 864e5 ? r.id : null; } catch (e) { return null; }
+    },
+    simpan(id) { try { localStorage.setItem(KUNCI_KOMUNITAS, JSON.stringify({ id, pada: Date.now() })); } catch (e) { /* mode privat */ } },
+    hapus() { try { localStorage.removeItem(KUNCI_KOMUNITAS); } catch (e) { /* mode privat */ } }
+  };
+  { const k = new URLSearchParams(location.search).get('k'); if (/^\d{1,6}$/.test(k || '')) U.komunitas.simpan(Number(k)); }
+
   U.pesan = (t, jenis) => {
     let w = U.$('#toasts');
     if (!w) { w = document.createElement('div'); w.id = 'toasts'; w.setAttribute('aria-live', 'polite'); document.body.append(w); }
@@ -93,7 +108,7 @@
     setTimeout(() => d.remove(), 5000);
   };
 
-  const MENU = [['index.html', 'Beranda'], ['peraturan.html', 'Peraturan'], ['rekap.html', 'Rekap Tim'], ['pertandingan.html', 'Pertandingan'], ['index.html#galeri', 'Galeri']];
+  const MENU = [['index.html', 'Beranda'], ['peraturan.html', 'Peraturan'], ['rekap.html', 'Rekap Tim'], ['komunitas.html', 'Komunitas'], ['pertandingan.html', 'Pertandingan'], ['index.html#galeri', 'Galeri']];
 
   function pasangKerangka() {
     const kini = location.pathname.split('/').pop().replace('.html', '') || 'index';

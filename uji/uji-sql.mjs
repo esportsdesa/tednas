@@ -1,6 +1,6 @@
 /**
  * Uji SQL TEDNas di Postgres SUNGGUHAN (container sementara di server jot, dibuang setelahnya):
- * skema-tednas.sql + migration-8-drive.sql + migration-9-cermin-drive.sql + migration-10-ai-periksa.sql + migration-12-perbaiki.sql di atas tiruan Supabase (uji/sql-tiruan-supabase.sql).
+ * skema-tednas.sql + migration-8-drive.sql + migration-9-cermin-drive.sql + migration-10-ai-periksa.sql + migration-12-perbaiki.sql + migration-13-komunitas.sql di atas tiruan Supabase (uji/sql-tiruan-supabase.sql).
  * Tanda HMAC dibuat dengan crypto Node — sama dengan Utilities.computeHmacSha256Signature di Apps Script —
  * jadi uji ini juga membuktikan pgcrypto menghitung tanda yang sama.
  *   node uji/uji-sql.mjs            (butuh ssh jot + docker postgres:17-alpine di sana)
@@ -511,6 +511,65 @@ ${harusGagal(`select public.tednas_perbaiki_token((select id from _pb))`, "permi
 ${harusGagal(`select public.tednas_perbaiki_token((select id from _pb))`, "permission denied", "authenticated")}
 ${harusGagal(`select public.tednas_perbaiki_tim('TED-00001', repeat('0', 40))`, "permission denied")}
 ${harusGagal(`select perbaiki_rahasia from public.tednas_rahasia`, "permission denied", "authenticated")}
+
+-- 15. tautan komunitas ToT (migrasi 13): pendaftaran tercatat ke komunitas, skor = tim terverifikasi, PIC hanya untuk admin
+create temp table _k (n int, id int);
+grant all on _k to anon, authenticated;
+set uji.uid = '';
+${harusGagal(`insert into public.tednas_komunitas (nama) values ('Bukan Admin')`, "row-level security", "authenticated")}
+${harusGagal(`select count(*) from public.tednas_komunitas`, "permission denied")}
+${harusGagal(`select public.tednas_komunitas_admin()`, "BUKAN_ADMIN", "authenticated")}
+${harusGagal(`select public.tednas_komunitas_admin()`, "permission denied")}
+set uji.uid = '00000000-0000-0000-0000-00000000a001';
+set role authenticated;
+insert into public.tednas_komunitas (nama, kota, provinsi, pic_nama, pic_wa) values ('Esports Malang Raya', 'Kota Malang', 'Jawa Timur', 'Budi', '6281299990001');
+insert into public.tednas_komunitas (nama, kota) values ('Komunitas Batu', 'Kota Batu');
+insert into public.tednas_komunitas (nama, kota, aktif) values ('Komunitas Bubar', 'Kediri', false);
+reset role;
+${harusGagal(`insert into public.tednas_komunitas (nama, pic_wa) values ('WA Salah', '0812')`, "check constraint", "authenticated")}
+insert into _k select row_number() over (order by id), id from public.tednas_komunitas order by id;
+set role anon;
+${daftar("Lewat Malang", "081234567821", "35.07.18.2031", pemain(21)).replace(/\)$/, ", (select id from _k where n = 1))")};
+${daftar("Lewat Malang Dua", "081234567822", "35.07.18.2032", pemain(22)).replace(/\)$/, ", (select id from _k where n = 1))")};
+${daftar("Kode Ngawur", "081234567823", "35.07.18.2033", pemain(23)).replace(/\)$/, ", 99999)")};
+${daftar("Lewat Bubar", "081234567824", "35.07.18.2034", pemain(24)).replace(/\)$/, ", (select id from _k where n = 3))")};
+do $u$ declare v json; begin
+  assert public.tednas_komunitas_info((select id from _k where n = 1))->>'nama' = 'Esports Malang Raya', 'info komunitas';
+  assert public.tednas_komunitas_info((select id from _k where n = 3)) is null, 'komunitas nonaktif tidak tampil';
+  assert public.tednas_komunitas_info(99999) is null, 'kode tak dikenal';
+end $u$;
+reset role;
+do $u$ begin
+  assert (select count(*) from public.tednas_tim where komunitas_id = (select id from _k where n = 1)) = 2, 'dua tim lewat tautan Malang';
+  assert (select komunitas_id from public.tednas_tim where wa_kapten = '6281234567823') is null, 'kode ngawur diabaikan, pendaftaran tetap masuk';
+  assert (select komunitas_id from public.tednas_tim where wa_kapten = '6281234567824') is null, 'komunitas nonaktif diabaikan';
+  assert (select komunitas_id from public.tednas_tim where wa_kapten = '6281234567820') is null, 'pendaftaran tanpa tautan';
+end $u$;
+update _pb set versi = (select drive_versi from public.tednas_tim where wa_kapten = '6281234567822'),
+  tok = public.tednas_ai_sidik((select id from public.tednas_tim where wa_kapten = '6281234567822'));
+set role authenticated;
+update public.tednas_tim set status = 'terverifikasi' where wa_kapten = '6281234567821';
+update public.tednas_tim set komunitas_id = (select id from _k where n = 2) where wa_kapten = '6281234567822';
+reset role;
+do $u$ begin
+  assert (select drive_versi from public.tednas_tim where wa_kapten = '6281234567822') = (select versi from _pb), 'pindah komunitas tidak menulis ulang Sheet';
+  assert public.tednas_ai_sidik((select id from public.tednas_tim where wa_kapten = '6281234567822')) = (select tok from _pb), 'pindah komunitas tidak memicu cek ulang AI';
+end $u$;
+set role anon;
+do $u$ declare v json; begin
+  v := public.tednas_komunitas_papan();
+  assert json_array_length(v) = 2, 'hanya komunitas aktif';
+  assert v->0->>'nama' = 'Esports Malang Raya' and (v->0->>'terverifikasi')::int = 1 and (v->0->>'mendaftar')::int = 1 and (v->0->>'pemain')::int = 5, 'skor Malang';
+  assert v->1->>'nama' = 'Komunitas Batu' and (v->1->>'terverifikasi')::int = 0 and (v->1->>'mendaftar')::int = 1, 'skor Batu';
+  assert position('Budi' in v::text) = 0 and position('6281299990001' in v::text) = 0, 'PIC tidak tampil di papan publik';
+end $u$;
+reset role;
+set role authenticated;
+do $u$ declare v json; begin
+  v := public.tednas_komunitas_admin();
+  assert json_array_length(v) = 3 and v->0->>'pic_wa' = '6281299990001' and (v->0->>'menunggu')::int = 0 and (v->2->>'aktif')::boolean = false, 'admin melihat semua + PIC';
+end $u$;
+reset role;
 \\echo SEMUA_LULUS
 `;
 
@@ -521,8 +580,9 @@ const migrasi = baca("supabase/migration-8-drive.sql").replace(/^create extensio
 const migrasi9 = baca("supabase/migration-9-cermin-drive.sql");
 const migrasi10 = baca("supabase/migration-10-ai-periksa.sql");
 const migrasi12 = baca("supabase/migration-12-perbaiki.sql");
+const migrasi13 = baca("supabase/migration-13-komunitas.sql");
 writeFileSync(f, ["\\set ON_ERROR_STOP 1", "\\set QUIET 1", "\\set VERBOSITY verbose", "set client_min_messages = warning;", baca("uji/sql-tiruan-supabase.sql"), skema,
-  "-- migrasi 8, 9, 10 & 12 dua kali: harus aman dijalankan ulang", migrasi, migrasi, migrasi9, migrasi9, migrasi10, migrasi10, migrasi12, migrasi12, SQL_BANTU, uji, uji2].join("\n")
+  "-- migrasi 8, 9, 10, 12 & 13 dua kali: harus aman dijalankan ulang", migrasi, migrasi, migrasi9, migrasi9, migrasi10, migrasi10, migrasi12, migrasi12, migrasi13, migrasi13, SQL_BANTU, uji, uji2].join("\n")
   .replace(/^-- (\d+)\. (.*)$/gm, (_, n, t) => `\\echo LANGKAH ${n}: ${t}`));
 const NAMA = "tednas-uji-pg";
 const ssh = (cmd, input) => execFileSync("ssh", ["-o", "ConnectTimeout=15", "jot", cmd], { input, encoding: "utf8", stdio: ["pipe", "pipe", "pipe"] });
@@ -533,7 +593,7 @@ try {
   catch (e) { console.error(`GAGAL:\n${e.stdout ?? ""}\n${e.stderr ?? e.message}`); process.exitCode = 1; }
   if (keluar !== undefined) {
     if (!keluar.includes("SEMUA_LULUS")) { console.error(keluar); process.exitCode = 1; }
-    else console.log("uji SQL lulus (skema + migrasi 8, 9, 10 & 12 di Postgres 17, 14 kelompok)");
+    else console.log("uji SQL lulus (skema + migrasi 8, 9, 10, 12 & 13 di Postgres 17, 15 kelompok)");
   }
 } finally {
   try { ssh(`docker rm -f ${NAMA} >/dev/null 2>&1; true`); } catch { /* */ }

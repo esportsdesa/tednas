@@ -45,6 +45,19 @@
   }
 
   let langkah = 0, desaSemua = [], desaPilih = null, sedangKirim = false;
+  let komunitas = null; // {id, nama, kota} dari tautan komunitas ToT (common.js U.komunitas)
+
+  async function muatKomunitas() {
+    const id = U.komunitas.ambil();
+    if (!id) return;
+    try {
+      komunitas = await DB.komunitasInfo(id);
+      if (!komunitas) { U.komunitas.hapus(); return; } // kode tak dikenal / komunitas nonaktif
+      $('#komunitas-nama').textContent = komunitas.nama + (komunitas.kota ? ` (${komunitas.kota})` : '');
+      $('#komunitas-pita').hidden = false;
+    } catch (e) { komunitas = null; }
+  }
+  $('#komunitas-hapus').onclick = () => { komunitas = null; U.komunitas.hapus(); $('#komunitas-pita').hidden = true; };
   // Urutan 1-5 pemain inti, urutan 6 cadangan. Berkas & path disimpan per pemain supaya
   // kembali ke langkah sebelumnya atau kirim ulang tidak mengulang unggahan.
   const pemain = Array.from({ length: 6 }, () => ({ jenis: 'KTP', dok: null, ml: null, ig1: null, ig2: null, izin: null, bawah17: false, pathDok: '', pathMl: '', pathIg1: '', pathIg2: '', pathIzin: '' }));
@@ -75,6 +88,7 @@
       ['Provinsi', teksPilihan(el.prov)], ['Kabupaten/Kota', teksPilihan(el.kab)],
       ['Desa', `${desaPilih[1]} (Kec. ${desaPilih[2]})`],
       ['Nama tim', $('#nama-tim').value.trim()], ['WhatsApp kapten', '+' + waNormal()],
+      ...(komunitas ? [['Komunitas', komunitas.nama]] : []),
       ...pemainAktif().map((i) => [labelPemain(i), `${namaPemain(i)} · ${pemain[i].jenis} + profil ML + 2 bukti follow IG${pemain[i].bawah17 ? ' + surat izin' : ''}`])
     ];
     $('#ulasan').innerHTML = baris.map(([a, b]) => `<dt>${esc(a)}</dt><dd>${esc(b)}</dd>`).join('');
@@ -300,9 +314,14 @@
         prov_kode: el.prov.value, provinsi: teksPilihan(el.prov), kab_kode: el.kab.value, kabupaten: teksPilihan(el.kab),
         kecamatan: desaPilih[2], desa_kode: desaPilih[0], desa: desaPilih[1],
         pemain: aktif.map((i) => ({ nama: namaPemain(i), dokumen_jenis: pemain[i].jenis, dokumen_path: pemain[i].pathDok, profil_ml_path: pemain[i].pathMl, follow_esports_path: pemain[i].pathIg1, follow_ppdt_path: pemain[i].pathIg2, izin_path: pemain[i].bawah17 ? pemain[i].pathIzin : null })),
-        captcha: captchaToken
+        captcha: captchaToken,
+        komunitas: komunitas ? komunitas.id : null
       });
-      $('#form').hidden = true; $('#sukses').hidden = false;
+      $('#form').hidden = true; $('#komunitas-pita').hidden = true; $('#sukses').hidden = false;
+      if (komunitas && hasil.komunitas) {
+        $('#sukses-komunitas').textContent = `Tercatat untuk komunitas ${komunitas.nama}. Skor komunitas bertambah begitu tim ini terverifikasi.`;
+        $('#sukses-komunitas').hidden = false;
+      }
       $('#kode').textContent = hasil.kode;
       $('#sukses-teks').textContent = `${$('#nama-tim').value.trim()}, wakil ${desaPilih[1]}, ${teksPilihan(el.kab)}.`;
       const grup = (window.APP_CONFIG || {}).WA_GRUP;
@@ -332,6 +351,7 @@
     const buka = set.buka_mulai ? new Date(set.buka_mulai).getTime() : 0;
     if (Date.now() < buka) { tungguBuka(buka); return; }
     $('#form').hidden = false;
+    muatKomunitas();
     await muatProvinsi();
   })();
 

@@ -7,6 +7,7 @@
     }
   ],
   "redirects": [
+    { "source": "/k/:id(\\d{1,6})", "destination": "/daftar?k=:id", "permanent": false },
     { "source": "/((?!api/).*)", "has": [{ "type": "host", "value": "tednas.vercel.app" }], "destination": "https://esportsdesa.id/$1", "permanent": true },
     { "source": "/(.*)", "has": [{ "type": "host", "value": "www.esportsdesa.id" }], "destination": "https://esportsdesa.id/$1", "permanent": true },
     { "source": "/(.*)", "has": [{ "type": "host", "value": "tednas.esportsdesa.id" }], "destination": "https://esportsdesa.id/$1", "permanent": true }

@@ -9,7 +9,8 @@
     const admin = await DB.sesiAdmin().catch(() => false);
     $('#masuk').hidden = admin;
     $('#panel').hidden = !admin;
-    if (admin) { isiProvinsi(); muatTim().then(muatRingkas); }
+    // Daftar komunitas dulu: label "via komunitas" di tabel tim memakai namanya.
+    if (admin) { isiProvinsi(); muatKomunitas().finally(() => muatTim().then(muatRingkas)); }
   }
   $('#masuk').onsubmit = async (e) => {
     e.preventDefault();
@@ -28,6 +29,7 @@
     const op = p.map(([k, n]) => `<option value="${esc(k)}">${esc(n)}</option>`).join('');
     $('#t-prov').insertAdjacentHTML('beforeend', op);
     $('#m-prov').insertAdjacentHTML('beforeend', op);
+    $('#k-prov').insertAdjacentHTML('beforeend', p.map(([, n]) => `<option>${esc(n)}</option>`).join(''));
   }
 
   /* ---------- Tab ---------- */
@@ -38,8 +40,76 @@
       if (b.dataset.tab === 'match') muatMatch();
       if (b.dataset.tab === 'galeri') muatGaleri();
       if (b.dataset.tab === 'atur') muatAtur();
+      if (b.dataset.tab === 'komunitas') muatKomunitas();
     };
   });
+
+  /* ---------- Komunitas ToT (migrasi 13): tautan pendaftaran per komunitas, skor = tim terverifikasi ---------- */
+  let komunitasDaftar = null; // null = migrasi 13 belum ada / gagal dimuat
+  const namaKomunitas = (id) => ((komunitasDaftar || []).find((k) => k.id === id) || {}).nama || `komunitas #${id}`;
+  const tautanKomunitas = (id) => new URL(`k/${id}`, location.href).href;
+  const waNormal = (w) => { w = String(w || '').replace(/\D/g, ''); return w.startsWith('08') ? '62' + w.slice(1) : w; };
+  const waPic = (k) => `https://wa.me/${k.pic_wa}?text=${encodeURIComponent([
+    `Halo Kak ${k.pic_nama || ''}, ini tautan pendaftaran khusus komunitas *${k.nama}* untuk Turnamen Esports Desa Nasional 2027:`,
+    tautanKomunitas(k.id), '',
+    'Setiap tim desa yang mendaftar lewat tautan ini tercatat untuk komunitas kakak. Skor komunitas = jumlah tim yang terverifikasi (berkasnya lolos pemeriksaan).',
+    `Peringkat bisa dipantau di ${new URL('komunitas', location.href).href}`, '', 'Panitia TEDNas 2027'].join('\n'))}`;
+
+  async function muatKomunitas() {
+    try { komunitasDaftar = await DB.komunitasAdmin(); }
+    catch (e) { komunitasDaftar = null; $('#k-baris').innerHTML = `<tr><td colspan="6">Daftar komunitas gagal dimuat: ${esc(e.message)}</td></tr>`; return; }
+    const aktif = komunitasDaftar.filter((k) => k.aktif);
+    $('#k-ringkas').innerHTML = [[aktif.length, 'Komunitas aktif'], [aktif.reduce((n, k) => n + Number(k.terverifikasi), 0), 'Tim terverifikasi lewat komunitas'],
+      [aktif.reduce((n, k) => n + Number(k.mendaftar), 0), 'Tim mendaftar lewat komunitas']].map(([a, b]) => `<div><b>${angka(a)}</b><span>${b}</span></div>`).join('');
+    $('#k-baris').innerHTML = komunitasDaftar.length ? komunitasDaftar.map((k) => `<tr${k.aktif ? '' : ' class="nonaktif"'}>
+      <td>${k.id}</td>
+      <td><b>${esc(k.nama)}</b><small>${esc([k.kota, k.provinsi].filter(Boolean).join(', '))}${k.aktif ? '' : ' · NONAKTIF'}</small></td>
+      <td>${esc(k.pic_nama || '-')}${k.pic_wa ? `<small>+${esc(k.pic_wa)}</small>` : ''}</td>
+      <td><code class="tautan-k">${esc(tautanKomunitas(k.id).replace(/^https?:\/\//, ''))}</code></td>
+      <td><b>${angka(k.terverifikasi)}</b> terverifikasi<small>${angka(k.mendaftar)} mendaftar · ${angka(k.menunggu)} menunggu</small></td>
+      <td><div class="aksi-sel">
+        <button class="btn btn-garis-gelap btn-kecil" data-k-salin="${k.id}">Salin Tautan</button>
+        ${k.pic_wa ? `<a class="btn btn-wa btn-kecil" target="_blank" rel="noopener" href="${esc(waPic(k))}" title="Kirim tautan ke PIC lewat WhatsApp">WA PIC</a>` : ''}
+        <button class="btn btn-garis-gelap btn-kecil" data-k-ubah="${k.id}">Ubah</button>
+        <button class="btn btn-kecil ${k.aktif ? 'btn-bahaya' : ''}" data-k-aktif="${k.id}">${k.aktif ? 'Nonaktifkan' : 'Aktifkan'}</button></div></td></tr>`).join('')
+      : '<tr><td colspan="6">Belum ada komunitas. Tambahkan lewat formulir di atas.</td></tr>';
+  }
+
+  function isiFormKomunitas(k) {
+    $('#k-id').value = k ? k.id : '';
+    $('#k-nama').value = k ? k.nama : ''; $('#k-kota').value = k ? k.kota : ''; $('#k-prov').value = k ? k.provinsi : '';
+    $('#k-pic').value = k ? k.pic_nama : ''; $('#k-wa').value = k && k.pic_wa ? '0' + k.pic_wa.slice(2) : '';
+    $('#k-simpan').textContent = k ? `Simpan Perubahan #${k.id}` : 'Tambah Komunitas';
+    $('#k-batal').hidden = !k; $('#k-salah').hidden = true;
+  }
+  $('#k-batal').onclick = () => isiFormKomunitas(null);
+  $('#k-form').onsubmit = async (e) => {
+    e.preventDefault();
+    const salah = (t) => { $('#k-salah').textContent = t; $('#k-salah').hidden = !t; };
+    const k = { nama: $('#k-nama').value.trim(), kota: $('#k-kota').value.trim(), provinsi: $('#k-prov').value, pic_nama: $('#k-pic').value.trim(), pic_wa: waNormal($('#k-wa').value) };
+    if (k.nama.length < 2) return salah('Nama komunitas belum diisi.');
+    if (k.pic_wa && !/^628\d{7,12}$/.test(k.pic_wa)) return salah('Nomor WA PIC belum benar. Contoh: 081234567890.');
+    salah('');
+    try {
+      const id = Number($('#k-id').value) || null;
+      await DB.simpanKomunitas(id ? { id, ...k } : k);
+      U.pesan(id ? `Komunitas #${id} diperbarui.` : `Komunitas ${k.nama} ditambahkan.`, 'ok');
+      isiFormKomunitas(null); muatKomunitas();
+    } catch (err) { salah('Gagal menyimpan: ' + err.message); }
+  };
+  $('#k-baris').onclick = async (e) => {
+    const b = e.target.closest('button'); if (!b) return;
+    const k = (komunitasDaftar || []).find((x) => x.id === Number(b.dataset.kSalin || b.dataset.kUbah || b.dataset.kAktif));
+    if (!k) return;
+    if (b.dataset.kSalin) {
+      try { await navigator.clipboard.writeText(tautanKomunitas(k.id)); U.pesan(`Tautan ${k.nama} disalin.`, 'ok'); }
+      catch (err) { window.prompt('Salin tautan ini:', tautanKomunitas(k.id)); }
+    } else if (b.dataset.kUbah) { isiFormKomunitas(k); $('#k-form').scrollIntoView({ block: 'center' }); }
+    else if (b.dataset.kAktif) {
+      try { await DB.simpanKomunitas({ id: k.id, aktif: !k.aktif }); muatKomunitas(); }
+      catch (err) { U.pesan('Gagal: ' + err.message, 'gagal'); }
+    }
+  };
   $$('dialog [data-batal]').forEach((b) => { b.onclick = () => b.closest('dialog').close(); });
 
   /* ---------- Tim ---------- */
@@ -115,6 +185,17 @@
       + (nOk ? `<li class="ai-ok">${nOk} pemeriksaan sesuai</li>` : '') + '</ul></div>';
   }
 
+  $('#d-komunitas').onchange = async (e) => {
+    const t = timDialog; if (!t) return;
+    const id = Number(e.target.value) || null;
+    try {
+      await DB.setKomunitasTim(t.id, id);
+      t.komunitas_id = id;
+      U.pesan(id ? `${t.nama_tim} dicatat untuk ${namaKomunitas(id)}.` : `${t.nama_tim} tidak lagi dicatat untuk komunitas mana pun.`, 'ok');
+      muatTim(); muatKomunitas();
+    } catch (err) { U.pesan('Gagal mengubah komunitas: ' + err.message, 'gagal'); e.target.value = t.komunitas_id || ''; }
+  };
+
   $('#d-pemain-ulang').onclick = async () => {
     const t = timDialog; if (!t) return;
     try { await DB.periksaUlangAi(t.id); $('#d-pemain').close(); U.pesan(`${t.nama_tim} akan diperiksa ulang AI dalam beberapa menit.`, 'ok'); muatTim(); muatRingkasAi(); }
@@ -149,7 +230,7 @@
       timHal = baris;
       $('#t-baris').innerHTML = baris.length ? baris.map((t) => `<tr>
         <td>${esc(t.kode)}<small>${esc(U.tanggal(t.created_at))}</small></td>
-        <td><b>${esc(t.nama_tim)}</b><small>${esc(t.nama_kapten)}</small></td>
+        <td><b>${esc(t.nama_tim)}</b><small>${esc(t.nama_kapten)}</small>${t.komunitas_id ? `<small class="via-komunitas">via ${esc(namaKomunitas(t.komunitas_id))}</small>` : ''}</td>
         <td><a href="https://wa.me/${esc(t.wa_kapten)}" target="_blank" rel="noopener">+${esc(t.wa_kapten)}</a></td>
         <td>${esc(t.desa)}<small>Kec. ${esc(t.kecamatan)}, ${esc(t.kabupaten)}<br>${esc(t.provinsi)}</small></td>
         <td><button class="btn btn-garis-gelap btn-kecil" data-pemain="${esc(t.id)}">Lihat ${t.pemain.length} pemain</button></td>
@@ -174,6 +255,11 @@
     if (b.dataset.pemain) {
       const t = timDialog = cari(b.dataset.pemain);
       $('#d-pemain-judul').textContent = `${t.nama_tim} · ${t.desa}`;
+      // Koreksi komunitas (mis. kapten lupa memakai tautan komunitasnya). Hanya bila migrasi 13 sudah ada.
+      $('#d-komunitas-label').hidden = !komunitasDaftar;
+      if (komunitasDaftar) {
+        $('#d-komunitas').innerHTML = '<option value="">Tanpa komunitas</option>' + komunitasDaftar.map((k) => `<option value="${k.id}" ${k.id === t.komunitas_id ? 'selected' : ''}>${esc(k.nama)}${k.aktif ? '' : ' (nonaktif)'}</option>`).join('');
+      }
       $('#d-pemain-ai').innerHTML = aiTim(t);
       $('#d-pemain-ulang').hidden = !(DB.aiAda && t.ai);
       $('#d-pemain-isi').innerHTML = t.pemain.map((p) => `<div class="baris-pemain">
@@ -233,7 +319,8 @@
       const isiPemain = (t) => [0, 1, 2, 3, 4, 5].flatMap((i) => [t.pemain[i] ? t.pemain[i].nama : '', t.pemain[i] ? t.pemain[i].dokumen_jenis : '', t.pemain[i] && t.pemain[i].izin_path ? 'ada' : '']);
       const judulAi = DB.aiAda ? ['cek_ai', 'catatan_ai'] : [];
       const isiAi = (t) => (DB.aiAda ? [t.ai ? { lolos: 'lolos', cek: 'perlu dicek', galat: 'diulang' }[t.ai.akhir] : 'antre', t.ai ? t.ai.ringkas : ''] : []);
-      const csv = '﻿' + [[...kolom, ...judulAi, ...judulPemain].join(';'), ...semua.map((t) => [...kolom.map((k) => t[k]), ...isiAi(t), ...isiPemain(t)].map(sel).join(';'))].join('\r\n');
+      const isiKomunitas = (t) => [t.komunitas_id ? namaKomunitas(t.komunitas_id) : ''];
+      const csv = '﻿' + [[...kolom, 'komunitas', ...judulAi, ...judulPemain].join(';'), ...semua.map((t) => [...kolom.map((k) => t[k]), ...isiKomunitas(t), ...isiAi(t), ...isiPemain(t)].map(sel).join(';'))].join('\r\n');
       const a = document.createElement('a');
       a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
       a.download = `tim-tednas-2027-${new Date().toISOString().slice(0, 10)}.csv`;

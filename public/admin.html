@@ -27,6 +27,7 @@
   <div id="panel" hidden>
     <div class="tab" role="tablist">
       <button role="tab" data-tab="tim" aria-selected="true">Tim</button>
+      <button role="tab" data-tab="komunitas" aria-selected="false">Komunitas</button>
       <button role="tab" data-tab="match" aria-selected="false">Pertandingan</button>
       <button role="tab" data-tab="galeri" aria-selected="false">Galeri</button>
       <button role="tab" data-tab="atur" aria-selected="false">Pengaturan</button>
@@ -56,6 +57,31 @@
           <span id="t-info"></span>
           <span class="tombol-baris"><button class="btn btn-garis-gelap btn-kecil" id="t-prev">Sebelumnya</button><button class="btn btn-garis-gelap btn-kecil" id="t-next">Berikutnya</button></span>
         </div>
+      </div>
+    </section>
+
+    <section data-isi="komunitas" hidden>
+      <div class="ringkas" id="k-ringkas"></div>
+      <div class="kartu">
+        <h2>Komunitas (ToT)</h2>
+        <p class="bantu" style="margin:-6px 0 14px">Tiap komunitas mendapat tautan pendaftaran sendiri, <b>esportsdesa.id/k/&lt;nomor&gt;</b>. Tim yang
+          mendaftar lewat tautan itu tercatat untuk komunitasnya. Skor di <a href="komunitas.html" target="_blank">Papan Komunitas</a> = tim
+          terverifikasi. Komunitas yang dinonaktifkan hilang dari papan, dan tautannya tidak lagi mencatat tim baru.</p>
+        <form class="k-form" id="k-form" novalidate>
+          <input type="hidden" id="k-id">
+          <label class="isian">Nama komunitas<input type="text" id="k-nama" maxlength="80" placeholder="mis. Esports Malang Raya"></label>
+          <label class="isian">Kota/kabupaten<input type="text" id="k-kota" maxlength="80" placeholder="mis. Kota Malang"></label>
+          <label class="isian">Provinsi<select id="k-prov"><option value="">-</option></select></label>
+          <label class="isian">Nama PIC<input type="text" id="k-pic" maxlength="80"></label>
+          <label class="isian">WhatsApp PIC<input type="tel" id="k-wa" placeholder="081234567890"></label>
+          <div class="k-tombol"><button class="btn" type="submit" id="k-simpan">Tambah Komunitas</button>
+            <button type="button" class="tautan" id="k-batal" hidden>Batal</button></div>
+        </form>
+        <p class="salah" id="k-salah" hidden></p>
+        <div class="tabel-bungkus"><table>
+          <thead><tr><th>No</th><th>Komunitas</th><th>PIC</th><th>Tautan pendaftaran</th><th>Tim</th><th>Aksi</th></tr></thead>
+          <tbody id="k-baris"><tr><td colspan="6">Memuat...</td></tr></tbody>
+        </table></div>
       </div>
     </section>
 
@@ -115,6 +141,7 @@
 
 <dialog id="d-pemain">
   <h3 id="d-pemain-judul"></h3>
+  <label class="isian d-komunitas" id="d-komunitas-label" hidden>Komunitas (ToT)<select id="d-komunitas"></select></label>
   <div id="d-pemain-ai"></div>
   <div id="d-pemain-isi"></div>
   <div class="dialog-aksi"><button class="btn btn-garis-gelap btn-kecil" id="d-pemain-ulang" hidden>Periksa Ulang AI</button><button class="btn btn-garis-gelap btn-kecil" id="d-pemain-zip">Unduh ZIP Tim Ini</button><button class="btn btn-garis-gelap btn-kecil" data-batal>Tutup</button></div>

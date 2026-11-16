@@ -34,9 +34,12 @@ const AI_CEK = { ...AI_LOLOS, akhir: "cek", hasil: "lolos", ringkas: "1 catatan"
     pemain: [1, 2, 3, 4, 5].map((u) => ({ u, nama: `Pemain 2${u}`, butir: u === 3 ? [ok("KTP sesuai, umur 19."), { b: "follow_ppdt", s: "cek", t: "Bukti follow menunjukkan @ditjen_ppdt BELUM diikuti (tombol \"Ikuti\")." }, { b: "identitas", s: "info", t: "Domisili di Kota Malang, tim di Kabupaten Malang (masih satu provinsi)." }] : [ok("a"), ok("b")], data: { dok: "KTP", nik: "3507********0003", lahir: "2007-01-01", umur: 20, alamat: "SUMBERPASIR, PAKIS, KABUPATEN MALANG" } })) } };
 
 let dunia = "ai"; // "ai" | "tanpa-ai"
-const catat = { tim: [], ubah: [], hapus: [], kabari: [] };
+const catat = { tim: [], ubah: [], hapus: [], kabari: [], kom: [] };
 const TOKEN = "ab".repeat(20);
-const DATA = () => [tim(3, null), tim(2, AI_CEK), tim(1, AI_LOLOS, "terverifikasi", "ai")];
+const DATA = () => [tim(3, null), { ...tim(2, AI_CEK), komunitas_id: 1 }, tim(1, AI_LOLOS, "terverifikasi", "ai")];
+const KOMUNITAS = [
+  { id: 1, nama: "Esports Malang Raya", kota: "Kota Malang", provinsi: "JAWA TIMUR", pic_nama: "Budi", pic_wa: "6281299990001", aktif: true, mendaftar: 4, terverifikasi: 2, menunggu: 2 },
+  { id: 2, nama: "Komunitas Bubar", kota: "Kediri", provinsi: "", pic_nama: "", pic_wa: "", aktif: false, mendaftar: 1, terverifikasi: 0, menunggu: 1 }];
 
 const JENIS = { ".html": "text/html; charset=utf-8", ".js": "text/javascript", ".css": "text/css", ".json": "application/json", ".png": "image/png", ".jpg": "image/jpeg", ".ico": "image/x-icon", ".pdf": "application/pdf" };
 const srv = createServer(async (req, res) => {
@@ -58,6 +61,8 @@ const srv = createServer(async (req, res) => {
     if (p === "/rest/v1/rpc/tednas_statistik") return kirim(200, { total: 3, terverifikasi: 0, kabupaten: 1, provinsi: 1, per_provinsi: [] });
     if (p === "/rest/v1/rpc/tednas_ai_statistik") return kirim(200, { otomatis: 1, cek: 1, galat: 0, antre: 1 });
     if (p === "/rest/v1/tednas_tim" && req.method === "PATCH") { catat.ubah.push({ q, isi: JSON.parse(isi) }); return kirim(204); }
+    if (p === "/rest/v1/rpc/tednas_komunitas_admin") return kirim(200, KOMUNITAS);
+    if (p === "/rest/v1/tednas_komunitas") { catat.kom.push({ metode: req.method, q, isi: JSON.parse(isi) }); return kirim(req.method === "POST" ? 201 : 204); }
     if (p === "/rest/v1/rpc/tednas_kabari_kapten") { catat.kabari.push(JSON.parse(isi)); return kirim(200, { token: TOKEN, pada: "2026-11-17T04:00:00Z" }); }
     if (p === "/rest/v1/tednas_ai" && req.method === "DELETE") { catat.hapus.push(q); return kirim(204); }
     if (p === "/rest/v1/tednas_tim") {
@@ -178,6 +183,42 @@ await uji("WA Kapten: satu klik → WhatsApp terbuka dengan daftar perbaikan per
     + "Ajak semua pemain masuk grup WhatsApp peserta. Jadwal dan pengumuman turnamen dikirim di sana:\nhttps://chat.whatsapp.com/UjiGrup\n\n"
     + "Panitia TEDNas 2027");
   assert.equal(catat.kabari.length, 2);
+});
+
+await uji("komunitas ToT: tautan per komunitas, WA PIC, tambah & nonaktifkan, label di tabel tim, koreksi komunitas tim", async () => {
+  const tunggu = async (f) => { for (let i = 0; i < 60 && !f(); i++) await new Promise((ok) => setTimeout(ok, 50)); assert.ok(f()); };
+  assert.match(await halaman.textContent("#t-baris tr:nth-child(2) td:nth-child(2)"), /via Esports Malang Raya/);
+  await halaman.click("[data-tab='komunitas']");
+  await halaman.waitForFunction(() => document.querySelectorAll("#k-baris tr").length === 2);
+  const baris = await halaman.textContent("#k-baris");
+  assert.ok(baris.includes(`${ASAL.replace(/^https?:\/\//, "")}/k/1`), baris);
+  assert.match(baris, /2 terverifikasi4 mendaftar · 2 menunggu/);
+  assert.match(baris, /NONAKTIF/);
+  assert.equal(await halaman.$$eval("#k-baris a.btn-wa", (a) => a.length), 1, "WA PIC hanya bila nomornya ada");
+  const wa = new URL(await halaman.getAttribute("#k-baris a.btn-wa", "href"));
+  assert.equal(wa.pathname, "/6281299990001");
+  assert.ok(wa.searchParams.get("text").includes(`*Esports Malang Raya*`) && wa.searchParams.get("text").includes(`${ASAL}/k/1\n`), wa.searchParams.get("text"));
+  assert.match(await halaman.textContent("#k-ringkas"), /1Komunitas aktif2Tim terverifikasi lewat komunitas4Tim mendaftar/);
+
+  await halaman.fill("#k-nama", "Komunitas Batu"); await halaman.fill("#k-wa", "0812-3456-7000");
+  await halaman.click("#k-simpan");
+  await tunggu(() => catat.kom.length === 1);
+  assert.equal(catat.kom[0].metode, "POST");
+  assert.deepEqual(catat.kom[0].isi, { nama: "Komunitas Batu", kota: "", provinsi: "", pic_nama: "", pic_wa: "6281234567000" });
+  await halaman.click("[data-k-aktif='1']");
+  await tunggu(() => catat.kom.length === 2);
+  assert.equal(catat.kom[1].metode, "PATCH"); assert.match(catat.kom[1].q, /id=eq\.1/); assert.deepEqual(catat.kom[1].isi, { aktif: false });
+
+  await halaman.click("[data-tab='tim']");
+  await halaman.click("button.btn[data-pemain='00000000-0000-0000-0000-000000000003']");
+  await halaman.waitForSelector("#d-pemain[open] #d-komunitas-label:not([hidden])");
+  assert.equal(await halaman.$eval("#d-komunitas", (s) => s.value), "");
+  const n = catat.ubah.length;
+  await halaman.selectOption("#d-komunitas", "1");
+  await tunggu(() => catat.ubah.length === n + 1);
+  assert.match(catat.ubah[n].q, /id=eq\.00000000-0000-0000-0000-000000000003/);
+  assert.deepEqual(catat.ubah[n].isi, { komunitas_id: 1 });
+  await halaman.click("#d-pemain [data-batal]");
 });
 
 await uji("saringan Lolos AI memakai join inner + akhir=lolos", async () => {

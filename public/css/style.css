@@ -267,6 +267,24 @@ select:disabled, input:disabled { background: #eef1f8; color: #8a92aa; }
 label.isian.perlu input { border-color: var(--merah); }
 .jatuhan.perlu { border: 2px solid var(--merah); background: rgba(179, 38, 30, .04); }
 .btn-wa.btn-kecil { font-size: 13px; }
+
+/* ---------- Komunitas ToT (daftar, papan publik, admin) ---------- */
+.komunitas-pita { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 6px 14px; margin-bottom: 18px;
+  padding: 12px 14px; background: #fff; border: 2px solid var(--magenta); border-radius: 3px; font-size: 14.5px; }
+.komunitas-pita a { font-weight: 700; }
+.komunitas-pita .tautan { font-size: 13px; }
+.sukses-komunitas { font-weight: 700; color: var(--magenta); }
+table.papan td.angka, table.papan th.angka { text-align: right; font-variant-numeric: tabular-nums; }
+table.papan td.angka b { font-size: 17px; color: var(--ungu); }
+.papan-ke { font-weight: 800; color: var(--teks-2); width: 36px; }
+tr.papan-atas .papan-ke { color: var(--magenta); font-size: 17px; }
+.k-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 0 14px; align-items: end; margin-bottom: 6px; }
+.k-form label.isian { margin-bottom: 12px; }
+.k-tombol { display: flex; gap: 12px; align-items: center; margin-bottom: 12px; }
+code.tautan-k { font-size: 12.5px; background: var(--kabut); padding: 2px 6px; border-radius: 3px; white-space: nowrap; }
+tr.nonaktif td { opacity: .55; }
+small.via-komunitas { color: var(--magenta); font-weight: 700; }
+label.d-komunitas { max-width: 360px; margin-bottom: 12px; }
 small.jejak-kapten { margin-top: 4px; white-space: nowrap; }
 
 /* ---------- Pertandingan ---------- */

@@ -38,7 +38,7 @@ const uji = async (nama, f) => {
 };
 
 /* ── situs statis + Supabase tiruan di satu server ────────────────────── */
-let pendaftaran = 0;
+let pendaftaran = 0, daftarTerakhir = null;
 const TOKEN = "cd".repeat(20), perbaikan = [];
 // tednas_perbaiki_lihat tiruan: TED-00001 dengan dua catatan AI (pemain 2 ID ML, pemain 3 nama); setelah disimpan = dicek ulang.
 const dataPerbaiki = () => ({ kode: "TED-00001", nama_tim: "Garuda Mangliawan", nama_kapten: "A Pemain 1", desa: "Mangliawan", kabupaten: "KAB. MALANG",
@@ -75,11 +75,21 @@ async function supabase(req, res, u) {
       if (!W.sahkan(p[k])) return kirim(400, { code: "P0001", message: "DOKUMEN_TIDAK_ADA" });
     }
     pendaftaran++;
+    daftarTerakhir = b;
     const t = W.daftarTim(b.p_nama_tim, b.p_pemain.map((p) => ({ nama: p.nama, jenis: p.dokumen_jenis, dok: p.dokumen_path, ml: p.profil_ml_path, ig1: p.follow_esports_path, ig2: p.follow_ppdt_path, izin: p.izin_path })), { wa: b.p_wa });
     // pg_net: setelah commit database mengirim kabar "tim" ke Web App.
     const k = W.kabar("tim", { tim: W.paket(t) });
     assert.equal(k.ok, true, JSON.stringify(k));
-    return kirim(200, { kode: t.kode });
+    return kirim(200, { kode: t.kode, komunitas: b.p_komunitas ?? null });
+  }
+  if (u.pathname === "/sb/rest/v1/rpc/tednas_komunitas_papan") {
+    return kirim(200, [{ id: 7, nama: "Esports Malang Raya", kota: "Kota Malang", provinsi: "JAWA TIMUR", mendaftar: 12, terverifikasi: 9, pemain: 47 },
+      { id: 3, nama: "Batu Gaming", kota: "Kota Batu", provinsi: "JAWA TIMUR", mendaftar: 15, terverifikasi: 4, pemain: 20 },
+      { id: 9, nama: "Komunitas Baru", kota: "Sleman", provinsi: "DI YOGYAKARTA", mendaftar: 0, terverifikasi: 0, pemain: 0 }]);
+  }
+  if (u.pathname === "/sb/rest/v1/rpc/tednas_komunitas_info") {
+    const b = JSON.parse(isi);
+    return kirim(200, b.p_id === 7 ? { id: 7, nama: "Esports Malang Raya", kota: "Kota Malang", provinsi: "JAWA TIMUR" } : null);
   }
   if (u.pathname === "/sb/rest/v1/rpc/tednas_perbaiki_lihat") {
     const b = JSON.parse(isi);
@@ -138,8 +148,8 @@ const JPG = (n) => ({ name: `ktp-${n}.jpg`, mimeType: "image/jpeg", buffer: Buff
 const PNG = (n) => ({ name: `ml-${n}.png`, mimeType: "image/png", buffer: Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.from(`png ${n}`)]) });
 const PDF = (n) => ({ name: `izin-${n}.pdf`, mimeType: "application/pdf", buffer: Buffer.from(`%PDF-1.4 izin ${n}`) });
 
-async function isiFormulir({ tim, wa, awal, cadangan = false }) {
-  await halaman.goto(`${ASAL}/daftar`);
+async function isiFormulir({ tim, wa, awal, cadangan = false, jalur = "/daftar" }) {
+  await halaman.goto(`${ASAL}${jalur}`);
   await halaman.waitForSelector("#form:not([hidden])");
   await halaman.check("#setuju-aturan");
   await halaman.click("#lanjut");
@@ -267,6 +277,47 @@ await uji("perbaikan oleh kapten: tautan dari WA → catatan per pemain → gant
   assert.deepEqual(p3, { urutan: 3, nama: "A Pemain Tiga" });
   assert.match(await halaman.textContent("#pb-kabar"), /dicek ulang otomatis.*sebelum perbaikan/);
   assert.match(await halaman.getAttribute("#wa-grup-link", "href"), /^https:\/\/chat\.whatsapp\.com\//);
+});
+
+await uji("tautan komunitas ToT: daftar?k=7 → spanduk komunitas → tercatat di pendaftaran; tetap diingat; bisa dilepas", async () => {
+  assert.equal(daftarTerakhir.p_komunitas, undefined, "pendaftaran biasa tanpa komunitas");
+  await isiFormulir({ tim: "Rajawali Komunitas", wa: "081234567893", awal: "D", jalur: "/daftar?k=7" });
+  assert.equal(await halaman.isVisible("#komunitas-pita"), true);
+  assert.match(await halaman.textContent("#komunitas-pita"), /lewat komunitas Esports Malang Raya \(Kota Malang\)/);
+  assert.match(await halaman.textContent("#ulasan"), /KomunitasEsports Malang Raya/);
+  await halaman.click("#lanjut");
+  await halaman.waitForSelector("#sukses:not([hidden])", { timeout: 60000 });
+  assert.equal(daftarTerakhir.p_komunitas, 7);
+  assert.match(await halaman.textContent("#sukses-komunitas"), /Tercatat untuk komunitas Esports Malang Raya/);
+  assert.equal(await halaman.isVisible("#komunitas-pita"), false);
+
+  // Dibuka lagi tanpa ?k (mis. besoknya): komunitas masih diingat browser. "Bukan dari komunitas ini" melepasnya.
+  await halaman.goto(`${ASAL}/daftar`);
+  await halaman.waitForSelector("#komunitas-pita:not([hidden])");
+  await halaman.click("#komunitas-hapus");
+  assert.equal(await halaman.isVisible("#komunitas-pita"), false);
+  await halaman.reload();
+  await halaman.waitForSelector("#form:not([hidden])");
+  await halaman.waitForTimeout(300);
+  assert.equal(await halaman.isVisible("#komunitas-pita"), false, "sudah dilepas");
+
+  // Kode tak dikenal / nonaktif: tanpa spanduk, dan tidak disimpan.
+  await halaman.goto(`${ASAL}/daftar?k=99`);
+  await halaman.waitForSelector("#form:not([hidden])");
+  await halaman.waitForTimeout(300);
+  assert.equal(await halaman.isVisible("#komunitas-pita"), false);
+  assert.equal(await halaman.evaluate(() => localStorage.getItem("tednas_ref_komunitas")), null);
+});
+
+await uji("papan komunitas publik: peringkat skor terverifikasi, cari tanpa mengubah nomor peringkat", async () => {
+  await halaman.goto(`${ASAL}/komunitas`);
+  await halaman.waitForFunction(() => document.querySelectorAll("#baris tr").length === 3);
+  assert.deepEqual(await halaman.$$eval("#baris tr", (r) => r.map((x) => [...x.children].map((c) => c.textContent.trim()).join("|"))), [
+    "1|Esports Malang RayaKota Malang, JAWA TIMUR|9|12|47", "2|Batu GamingKota Batu, JAWA TIMUR|4|15|20", "3|Komunitas BaruSleman, DI YOGYAKARTA|0|0|0"]);
+  assert.equal(await halaman.textContent("#p-ver"), "13");
+  await halaman.fill("#cari", "batu");
+  assert.deepEqual(await halaman.$$eval("#baris tr td:first-child", (t) => t.map((x) => x.textContent)), ["2"]);
+  assert.equal(await halaman.$$eval("header.nav a[aria-current=page]", (a) => a.map((x) => x.textContent).join()), "Komunitas", "menu Komunitas aktif");
 });
 
 await uji("tanpa galat skrip di halaman", async () => { assert.deepEqual(galatKonsol, []); });

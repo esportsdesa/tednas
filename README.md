@@ -47,6 +47,21 @@ Drive seperti saat mendaftar. Agen AI lalu memeriksa ulang tim itu, dan tim lang
 sesuai. Tim yang sudah Terverifikasi tidak bisa diubah lewat tautan. Di halaman admin tercatat kapan kapten
 dikabari dan kapan ia memperbaiki. Migrasi: `supabase/migration-12-perbaiki.sql`.
 
+## Tautan komunitas (ToT)
+
+Lomba antarkomunitas: tiap komunitas esports mendapat tautan pendaftaran sendiri, `esportsdesa.id/k/<nomor>`.
+- **Admin → tab Komunitas:** tambah komunitas (nama, kota, provinsi, PIC), salin tautannya, atau kirim ke PIC dengan
+  **WA PIC**. Komunitas bisa dinonaktifkan: hilang dari papan, dan tautannya tidak lagi mencatat tim baru.
+- **Pendaftar:** `/k/<nomor>` dialihkan ke `daftar?k=<nomor>`. Formulir menampilkan "Kamu mendaftar lewat komunitas …".
+  Kode disimpan 30 hari di browser (tautan terakhir yang berlaku), jadi tetap tercatat walau pendaftar baru mendaftar
+  besoknya. Pendaftar bisa melepasnya ("Bukan dari komunitas ini"). Kode yang tidak dikenal diabaikan, dan pendaftaran
+  tidak pernah gagal karenanya.
+- **Skor = tim terverifikasi** yang mendaftar lewat tautan komunitas, supaya tidak bisa didongkrak pendaftaran
+  asal-asalan. Peringkat publik: [esportsdesa.id/komunitas](https://esportsdesa.id/komunitas) (tanpa data PIC).
+- **Koreksi:** di dialog pemain, admin bisa memindahkan tim ke komunitas lain. Kolom CSV `komunitas` ikut terisi.
+
+Migrasi: `supabase/migration-13-komunitas.sql`.
+
 ## Captcha (Cloudflare Turnstile)
 
 Buat widget untuk hostname `esportsdesa.id` dan `tednas.vercel.app`. Site Key diisi di `public/js/config.js`. Secret Key dijalankan di SQL Editor:

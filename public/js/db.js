@@ -56,9 +56,20 @@
           p_nama_tim: d.nama_tim, p_wa: d.wa,
           p_prov_kode: d.prov_kode, p_provinsi: d.provinsi, p_kab_kode: d.kab_kode, p_kabupaten: d.kabupaten,
           p_kecamatan: d.kecamatan, p_desa_kode: d.desa_kode, p_desa: d.desa,
-          p_pemain: d.pemain, p_captcha: d.captcha
+          p_pemain: d.pemain, p_captcha: d.captcha,
+          ...(d.komunitas ? { p_komunitas: d.komunitas } : {})
         }));
       },
+      /* Komunitas ToT (migrasi 13) */
+      async komunitasInfo(id) { return cek(await sb.rpc('tednas_komunitas_info', { p_id: id })); },
+      async papanKomunitas() { return cek(await sb.rpc('tednas_komunitas_papan')); },
+      async komunitasAdmin() { return cek(await sb.rpc('tednas_komunitas_admin')); },
+      async simpanKomunitas(k) {
+        const { id, ...isi } = k;
+        if (id) cek(await sb.from('tednas_komunitas').update(isi).eq('id', id));
+        else cek(await sb.from('tednas_komunitas').insert(isi));
+      },
+      async setKomunitasTim(timId, komunitasId) { cek(await sb.from('tednas_tim').update({ komunitas_id: komunitasId }).eq('id', timId)); },
       async timPublik(o) {
         const q = saringTim(sb.from('tednas_tim_publik').select(KOLOM_PUBLIK, { count: 'exact' }), o)
           .order('created_at', { ascending: false }).range(o.dari, o.dari + o.jumlah - 1);
@@ -204,9 +215,27 @@
         if (t.some((x) => x.wa_kapten === wa)) salah('WA_SUDAH_ADA');
         const seq = baca('seq', 0) + 1; tulis('seq', seq);
         const kode = 'TED-' + String(seq).padStart(5, '0');
-        t.push({ id: acakId(), kode, nama_tim: d.nama_tim, nama_kapten: d.pemain[0].nama, wa_kapten: wa, prov_kode: d.prov_kode, provinsi: d.provinsi, kab_kode: d.kab_kode, kabupaten: d.kabupaten, kecamatan: d.kecamatan, desa_kode: d.desa_kode, desa: d.desa, pemain: d.pemain.map((p, i) => ({ ...p, urutan: i + 1 })), status: 'menunggu', created_at: new Date().toISOString() });
-        tulis('tim', t); return { kode };
+        const kom = baca('komunitas', []).find((k) => k.id === d.komunitas && k.aktif);
+        t.push({ id: acakId(), kode, nama_tim: d.nama_tim, nama_kapten: d.pemain[0].nama, wa_kapten: wa, prov_kode: d.prov_kode, provinsi: d.provinsi, kab_kode: d.kab_kode, kabupaten: d.kabupaten, kecamatan: d.kecamatan, desa_kode: d.desa_kode, desa: d.desa, pemain: d.pemain.map((p, i) => ({ ...p, urutan: i + 1 })), status: 'menunggu', komunitas_id: kom ? kom.id : null, created_at: new Date().toISOString() });
+        tulis('tim', t); return { kode, komunitas: kom ? kom.id : null };
       },
+      async komunitasInfo(id) { const k = baca('komunitas', []).find((x) => x.id === id && x.aktif); return k ? { id: k.id, nama: k.nama, kota: k.kota, provinsi: k.provinsi } : null; },
+      async komunitasAdmin() {
+        const t = tim();
+        return baca('komunitas', []).map((k) => { const m = t.filter((x) => x.komunitas_id === k.id); return { ...k, mendaftar: m.length, terverifikasi: m.filter((x) => x.status === 'terverifikasi').length, menunggu: m.filter((x) => x.status === 'menunggu').length }; });
+      },
+      async papanKomunitas() {
+        const t = tim();
+        return (await this.komunitasAdmin()).filter((k) => k.aktif).map(({ id, nama, kota, provinsi, mendaftar, terverifikasi }) => ({ id, nama, kota, provinsi, mendaftar, terverifikasi,
+          pemain: t.filter((x) => x.komunitas_id === id && x.status === 'terverifikasi').reduce((n, x) => n + x.pemain.length, 0) }))
+          .sort((a, b) => b.terverifikasi - a.terverifikasi || b.mendaftar - a.mendaftar || a.nama.localeCompare(b.nama));
+      },
+      async simpanKomunitas(k) {
+        const semua = baca('komunitas', []);
+        if (k.id) tulis('komunitas', semua.map((x) => (x.id === k.id ? { ...x, ...k } : x)));
+        else tulis('komunitas', semua.concat({ aktif: true, kota: '', provinsi: '', pic_nama: '', pic_wa: '', ...k, id: semua.reduce((n, x) => Math.max(n, x.id), 0) + 1, created_at: new Date().toISOString() }));
+      },
+      async setKomunitasTim(timId, komunitasId) { tulis('tim', tim().map((t) => (t.id === timId ? { ...t, komunitas_id: komunitasId } : t))); },
       async timPublik(o) { const a = saring(o); return { baris: a.slice(o.dari, o.dari + o.jumlah).map(pub), total: a.length }; },
       async matchPublik(o) {
         const a = urut(match().filter((m) => (!o.fase || m.fase === o.fase) && (!o.prov || m.prov_kode === o.prov))).map(gabungMatch);
