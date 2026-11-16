@@ -14,7 +14,7 @@ Dasarnya halaman Peraturan (`public/js/common.js`, `U.PERATURAN`).
 | Surat izin orang tua | surat izin? nama anak, tanda tangan | wajib bila umur < 17; dibaca hanya untuk pemain < 17 |
 | Profil Mobile Legends | profil ML? nickname, ID, server | harus profil ML dengan ID terlihat |
 | Bukti follow @esportsdesa.official dan @ditjen_ppdt | Instagram? akun terlihat? status follow | harus "Mengikuti"/"Following" untuk akun yang benar |
-| Nama tim | pantas? (SARA/pornografi/politik) | memuat nama desa (dicek kode, bukan AI) |
+| Nama tim | pantas? (SARA/pornografi/politik) | ditandai bila AI menilai tidak pantas |
 | Lintas tim | — | NIK, ID ML, atau berkas yang sama persis dipakai dua pemain → kedua tim "Perlu dicek" |
 
 AI hanya **membaca** isi gambar. Keputusan sesuai atau tidak sesuai diambil kode di `nilai.mjs`, jadi aturannya

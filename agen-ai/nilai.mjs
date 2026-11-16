@@ -132,15 +132,6 @@ export function wilayahSama(diDokumen, milikTim, tingkat) {
   return a === b || mirip(a, b) || (a.length >= 5 && b.length >= 5 && (a.includes(b) || b.includes(a)));
 }
 
-/** Nama tim mencantumkan nama desa (Peraturan B). Spasi diabaikan: "Mangli Awan" = "Mangliawan". */
-export function namaTimMemuatDesa(namaTim, desa) {
-  const t = huruf(namaTim).replace(/\s/g, ""), d = intiWilayah(desa);
-  if (!d) return true;
-  if (t.includes(d)) return true;
-  const kata = huruf(namaTim).split(" ");
-  return kata.some((k) => k.length >= 4 && mirip(k, d)) || (d.length >= 6 && kata.some((k, i) => mirip(k + (kata[i + 1] || ""), d)));
-}
-
 /* ── Tanggal & umur ───────────────────────────────────────────────────── */
 
 const tanggalSah = (s) => {
@@ -186,7 +177,6 @@ export const samarkanNik = (nik) => { const n = nikBersih(nik); return n.length 
  */
 export function nilaiTim(tim, baca, namaTim, sha = {}) {
   const pemain = [], timButir = [], identitas = [];
-  const desaPemain = [];
 
   for (const p of tim.pemain || []) {
     const b = baca[p.urutan] || {}, butir = [], data = {};
@@ -226,7 +216,6 @@ export function nilaiTim(tim, baca, namaTim, sha = {}) {
       // Domisili (Peraturan A & B: berdomisili di desa; tim boleh gabungan beberapa desa)
       const kab = wilayahSama(id.kabupaten_kota, tim.kabupaten, "kab"), kec = wilayahSama(id.kecamatan, tim.kecamatan), desa = wilayahSama(id.desa_kelurahan, tim.desa);
       data.alamat = [id.desa_kelurahan, id.kecamatan, id.kabupaten_kota].filter(Boolean).join(", ");
-      if (id.desa_kelurahan) desaPemain.push(id.desa_kelurahan);
       if (kab === false) cek("identitas", `Domisili di ${id.kabupaten_kota}, bukan ${tim.kabupaten}.`);
       else if (kab === null && desa === null) info("identitas", id.jenis_dokumen === "Kartu Pelajar" ? "Kartu pelajar tanpa alamat rumah: domisili tidak bisa dicek AI." : "Alamat tidak terbaca: domisili tidak bisa dicek AI.");
       else if (desa === false) info("identitas", `Pemain dari desa ${id.desa_kelurahan}${kec === false ? `, Kec. ${id.kecamatan}` : ""} (tim gabungan desa diperbolehkan).`);
@@ -279,8 +268,6 @@ export function nilaiTim(tim, baca, namaTim, sha = {}) {
   }
 
   // Tim
-  if (namaTimMemuatDesa(tim.nama_tim, tim.desa) || desaPemain.some((d) => namaTimMemuatDesa(tim.nama_tim, d))) timButir.push({ b: "nama_tim", s: "ok", t: "Nama tim memuat nama desa." });
-  else timButir.push({ b: "nama_tim", s: "cek", t: `Nama tim "${tim.nama_tim}" belum mencantumkan nama desa (${tim.desa}).` });
   if (namaTim && namaTim.pantas === false) timButir.push({ b: "nama_tim", s: "cek", t: `Nama tim mungkin melanggar aturan SARA/pornografi/politik: ${namaTim.alasan || "-"}` });
 
   const catatan = [...timButir.filter((x) => x.s === "cek").map((x) => x.t),

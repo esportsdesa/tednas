@@ -43,7 +43,7 @@ await uji("umur per 15 Jan 2027, tanggal lahir dari NIK", () => {
   assert.equal(N.samarkanNik("3507184506080003"), "3507********0003");
 });
 
-await uji("wilayah: Kota ≠ Kabupaten, awalan diabaikan, nama tim memuat desa", () => {
+await uji("wilayah: Kota ≠ Kabupaten, awalan diabaikan", () => {
   assert.equal(N.wilayahSama("KABUPATEN MALANG", "Kabupaten Malang", "kab"), true);
   assert.equal(N.wilayahSama("KAB. MALANG", "Kabupaten Malang", "kab"), true);
   assert.equal(N.wilayahSama("MALANG", "Kabupaten Malang", "kab"), true);
@@ -53,10 +53,6 @@ await uji("wilayah: Kota ≠ Kabupaten, awalan diabaikan, nama tim memuat desa",
   assert.equal(N.wilayahSama("DESA MANGLIAWAN", "Mangliawan"), true);
   assert.equal(N.wilayahSama("MANGLIAWAM", "Mangliawan"), true, "salah baca 1 huruf");
   assert.equal(N.wilayahSama("PAKISJAJAR", "Pakis"), true, "kata yang memuat (≥5 huruf)");
-  assert.equal(N.namaTimMemuatDesa("Mangliawan Esports", "Mangliawan"), true);
-  assert.equal(N.namaTimMemuatDesa("MANGLI AWAN SQUAD", "Mangliawan"), true);
-  assert.equal(N.namaTimMemuatDesa("Garuda Esports", "Mangliawan"), false);
-  assert.equal(N.namaTimMemuatDesa("Esport Manggliawan", "Mangliawan"), true, "salah ketik");
 });
 
 /* ── tim tiruan ───────────────────────────────────────────────────────── */
@@ -103,10 +99,10 @@ await uji("nilaiTim: tiap pelanggaran jadi catatan 'cek' yang terbaca admin", ()
   const n = N.nilaiTim({ ...t, nama_tim: "Garuda Esports" }, baca, { pantas: true, alasan: "" },
     { 3: { follow_esports_path: "x1", follow_ppdt_path: "x1" } });
   assert.equal(n.hasil, "cek");
-  assert.ok(n.ringkas.length <= 500 && n.ringkas.startsWith("8 catatan:"), n.ringkas.slice(0, 40));
+  assert.ok(n.ringkas.length <= 500 && n.ringkas.startsWith("7 catatan:"), n.ringkas.slice(0, 40));
   const semua = [...n.rincian.tim.filter((b) => b.s === "cek").map((b) => b.t),
     ...n.rincian.pemain.flatMap((p) => p.butir.filter((b) => b.s === "cek").map((b) => `P${p.u} ${p.nama}: ${b.t}`))].join(" · ");
-  for (const pola of [/belum mencantumkan nama desa/, /P1 Budi Santoso: Umur 15 tahun: surat izin/, /P2 Siti Aminah: .*@ditjen_ppdt BELUM diikuti/,
+  for (const pola of [/P1 Budi Santoso: Umur 15 tahun: surat izin/, /P2 Siti Aminah: .*@ditjen_ppdt BELUM diikuti/,
     /P4 Dewi Lestari: Nama di dokumen "AGUS SALIMUDIN WIJAYA KUSUMA" tidak sama dengan nama terdaftar "Dewi Lestari"/,
     /P3 Rizky Ramadhan: Domisili di KOTA MALANG, bukan Kabupaten Malang/, /P5 Agus Salim: Umur 37/, /P5 Agus Salim: Bukan tangkapan layar profil/,
     /P3 Rizky Ramadhan: Berkas yang sama persis diunggah untuk follow @esportsdesa.official dan follow @ditjen_ppdt/]) {

@@ -48,7 +48,6 @@
       'Seluruh anggota tim berdomisili di desa, setiap desa boleh mengirimkan lebih dari satu tim.',
       'Pemain dalam satu tim diperbolehkan berasal dari gabungan beberapa desa.',
       'Setiap pemain hanya boleh terdaftar pada 1 tim.',
-      'Nama tim mencantumkan nama desa dan bebas dari unsur SARA, pornografi, serta politik praktis. (Contoh: Mangliawan Esports).',
       'Satu tim menunjuk 1 orang kapten sebagai narahubung.']],
     ['C. Akun dan Perangkat', [
       'Menggunakan akun gim pribadi.',
