@@ -113,7 +113,8 @@ const SINGKATAN = { M: "MUHAMMAD", MUH: "MUHAMMAD", MUHAMAD: "MUHAMMAD", MUHAMMA
   AHMAD: "AHMAD", ACHMAD: "AHMAD", AHMAT: "AHMAD", ABD: "ABDUL", ABDUL: "ABDUL" };
 // Tiap kata: r = apa adanya, m = setelah singkatan Muhammad/Ahmad/Abdul diseragamkan.
 const kataNama = (s) => huruf(s).split(" ").filter(Boolean).map((r) => ({ r, m: SINGKATAN[r] || r }));
-const kataCocok = (a, b) => a.m === b.m || mirip(a.m, b.m) || (a.m.length >= 3 && b.m.length >= 3 && (a.m.startsWith(b.m) || b.m.startsWith(a.m)))
+const kataCocok = (a, b) => a.m === b.m || mirip(a.m, b.m) || mirip(a.r, b.r) // salah ketik sebelum diseragamkan: "Muhamah" ~ "MUHAMAD"
+  || (a.m.length >= 3 && b.m.length >= 3 && (a.m.startsWith(b.m) || b.m.startsWith(a.m)))
   // inisial: "Muhammad Alif A." = "MUHAMMAD ALIF AZIZI"
   || (a.r.length === 1 && b.r.startsWith(a.r)) || (b.r.length === 1 && a.r.startsWith(b.r));
 

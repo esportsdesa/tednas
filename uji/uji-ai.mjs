@@ -41,6 +41,9 @@ await uji("nama terdaftar vs nama di dokumen", () => {
   assert.equal(N.namaCocok("Nizam Fatih Abarra A.", "MUHAMMAD MISBACHUL U."), false);
   assert.equal(N.namaCocok("A. B.", "ANDI BUDI"), false, "inisial saja tidak cukup");
   assert.equal(N.namaCocok("Arya Rajasa D.", "SURYA NARENDRA S. B."), false);
+  assert.equal(N.namaCocok("Muhamah adnan fauzan", "MUHAMAD ADNAN FAUZAN"), true, "salah ketik di kata yang diseragamkan");
+  assert.equal(N.namaCocok("PippTzy", "MUHAMMAD AFIF"), false, "nickname bukan nama");
+  assert.equal(N.namaCocok("MUHAMMAD IMAM", "MOHAMMAD JASWITO"), false);
 });
 
 await uji("umur per 15 Jan 2027, tanggal lahir dari NIK", () => {
