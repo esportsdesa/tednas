@@ -23,10 +23,14 @@ Pasang, uji, dan perawatan: [deploy/drive/PASANG.md](deploy/drive/PASANG.md). Mi
 
 ## Cek berkas otomatis (agen AI)
 
-Agen AI di server dapur membaca berkas tiap tim begitu tim mendaftar. Yang dibaca: identitas, umur, domisili,
-surat izin, profil Mobile Legends, bukti follow, dan NIK/ID/berkas ganda. Hasilnya tampil di halaman admin, di
-kolom **Cek AI**. Agen tidak mengubah status. Admin yang menekan Verifikasi, per tim atau sekaligus untuk yang
-lolos AI. Panduan: [agen-ai/README.md](agen-ai/README.md). Migrasi: `supabase/migration-10-ai-periksa.sql`.
+Agen AI di server dapur membaca berkas tiap tim begitu tim mendaftar. Model: Qwen3.6-35B di pool GPU gabungan.
+Yang dibaca: identitas, umur, domisili satu provinsi, surat izin, profil Mobile Legends, bukti follow, dan pemain
+yang terdaftar di dua tim.
+- Lolos semua pemeriksaan: status langsung **Terverifikasi**.
+- Ada catatan: tim tetap Menunggu, dan catatannya tampil di kolom **Cek AI** halaman admin.
+- Status yang diubah admin tidak pernah ditimpa AI.
+
+Panduan: [agen-ai/README.md](agen-ai/README.md). Migrasi: `supabase/migration-10-ai-periksa.sql`.
 Selama migrasi itu belum dijalankan, halaman admin tetap berjalan seperti biasa tanpa kolom AI.
 
 ## Captcha (Cloudflare Turnstile)

@@ -272,7 +272,7 @@ end $u$;
 ${harusGagal(`select public.tednas_cermin_kunci_sah('x')`, "permission denied")}
 ${harusGagal(`select count(*) from public.tednas_cermin_hapus`, "permission denied")}
 ${harusGagal(`select cermin_rahasia from public.tednas_rahasia`, "permission denied", "authenticated")}
--- 13. agen AI (migrasi 10): antrean berkunci ai_rahasia, simpan, ganda lintas tim, statistik & verifikasi admin
+-- 13. agen AI (migrasi 10): antrean berkunci, status otomatis, 1 orang 1 tim (yang daftar belakangan ditandai), keputusan admin tak ditimpa
 update public.tednas_rahasia set ai_rahasia = ${q(RAHASIA3)} where id = 1;
 ${harusGagal(`select public.tednas_ai_antre(${q(RAHASIA)}, 1, 5)`, "KUNCI_SALAH")}
 ${harusGagal(`select public.tednas_ai_antre(${q(RAHASIA2)}, 1, 5)`, "KUNCI_SALAH")}
@@ -291,6 +291,8 @@ do $u$ declare v json; begin
   assert (v->>'sisa')::int = (select n from _ai), 'semua tim antre AI';
   assert json_array_length(v->'tim') = 3, 'antre AI dibatasi';
   assert v->'tim'->0->>'status' = 'menunggu' and v->'tim'->2->>'status' = 'menunggu', 'yang menunggu didahulukan';
+  assert (v->'tim'->0->>'created_at')::timestamptz < (v->'tim'->1->>'created_at')::timestamptz
+     and (v->'tim'->1->>'created_at')::timestamptz < (v->'tim'->2->>'created_at')::timestamptz, 'urut waktu daftar: A < B < C';
   assert length(v->'tim'->0->>'sidik') = 32 and json_array_length(v->'tim'->0->'pemain') >= 5, 'paket + sidik';
   update _ai set a = (v->'tim'->0->>'id')::uuid, sa = v->'tim'->0->>'sidik', b = (v->'tim'->1->>'id')::uuid, sb = v->'tim'->1->>'sidik',
     c = (v->'tim'->2->>'id')::uuid, sc = v->'tim'->2->>'sidik';
@@ -300,42 +302,51 @@ do $u$ declare r json; x record; begin
   r := public.tednas_ai_simpan(${q(RAHASIA3)}, x.a, x.sa, 1, 'lolos', 'Semua sesuai', '{"tim":[],"pemain":[]}',
     '[{"u":1,"nik":"n1","ml":"m1","sha":["s1","s2"]},{"u":2,"nik":"n2","ml":"","sha":["s3"]},{"u":9,"nik":"abaikan"}]', 'uji', 1000);
   assert (r->>'ok')::boolean and r->>'akhir' = 'lolos' and json_array_length(r->'ganda') = 0, 'lolos tanpa ganda';
+  assert r->>'status' = 'terverifikasi', 'lolos AI → langsung Terverifikasi';
   r := public.tednas_ai_simpan(${q(RAHASIA3)}, x.b, 'sidik-basi', 1, 'lolos', '', '{}', '[]', 'uji', null);
   assert r->>'pesan' = 'TIM_BERUBAH', 'sidik basi tidak disimpan';
   r := public.tednas_ai_simpan(${q(RAHASIA3)}, gen_random_uuid(), 'x', 1, 'lolos', '', '{}', '[]', 'uji', null);
   assert r->>'pesan' = 'TIM_TIDAK_ADA', 'tim tak ada';
-  -- B memakai NIK pemain 1 tim A → keduanya cek
+  -- B (daftar setelah A) memakai NIK pemain 1 tim A → B yang ditandai, A tidak
   r := public.tednas_ai_simpan(${q(RAHASIA3)}, x.b, x.sb, 1, 'lolos', '', '{}', '[{"u":3,"nik":"n1","ml":"m9","sha":["s9"]}]', 'uji', null);
-  assert r->>'akhir' = 'cek' and json_array_length(r->'ganda') = 1, 'B cek karena NIK ganda';
-  assert r->'ganda'->0->>'jenis' = 'nik' and (r->'ganda'->0->>'u')::int = 3 and (r->'ganda'->0->>'u_lain')::int = 1, 'rincian ganda B';
-  assert (r->>'terkait')::int = 1, 'A ikut dihitung ulang';
+  assert r->>'akhir' = 'cek' and json_array_length(r->'ganda') = 1, 'B cek karena NIK sudah dipakai tim yang daftar lebih dulu';
+  assert r->'ganda'->0->>'jenis' = 'nik' and (r->'ganda'->0->>'u')::int = 3 and (r->'ganda'->0->>'u_lain')::int = 1
+     and (r->'ganda'->0->>'dulu')::boolean, 'rincian ganda B';
+  assert r->>'status' is null and (r->>'terkait')::int = 1 and (r->>'diubah')::int = 0, 'B tetap Menunggu, A dihitung ulang tanpa berubah';
   assert (public.tednas_ai_antre(${q(RAHASIA3)}, 1, 50)->>'sisa')::int = (select n from _ai) - 2, 'dua tim tercatat';
   assert (public.tednas_ai_antre(${q(RAHASIA3)}, 2, 1)->>'sisa')::int = (select n from _ai), 'versi agen naik → semua antre lagi';
 end $u$;
 reset role;
 do $u$ begin
-  assert (select akhir from public.tednas_ai where tim_id = (select a from _ai)) = 'cek', 'A ikut cek';
-  assert (select hasil from public.tednas_ai where tim_id = (select a from _ai)) = 'lolos', 'hasil A sendiri tetap lolos';
-  assert (select ganda->0->>'kode' from public.tednas_ai where tim_id = (select a from _ai)) = (select kode from public.tednas_tim where id = (select b from _ai)), 'ganda A menunjuk B';
+  assert (select akhir from public.tednas_ai where tim_id = (select a from _ai)) = 'lolos', 'A (daftar lebih dulu) tetap lolos';
+  assert (select ganda->0->>'kode' from public.tednas_ai where tim_id = (select a from _ai)) = (select kode from public.tednas_tim where id = (select b from _ai))
+     and not (select (ganda->0->>'dulu')::boolean from public.tednas_ai where tim_id = (select a from _ai)), 'A hanya mendapat catatan ganda dengan B';
+  assert (select status = 'terverifikasi' and status_oleh = 'ai' from public.tednas_tim where id = (select a from _ai)), 'A diverifikasi AI';
+  assert (select status = 'menunggu' and status_oleh is null from public.tednas_tim where id = (select b from _ai)), 'B masih Menunggu';
   assert (select count(*) from public.tednas_ai_kunci where tim_id = (select a from _ai)) = 6, 'kunci A (u 9 & kosong diabaikan)';
 end $u$;
 set role anon;
 do $u$ declare r json; x record; begin
   select * into x from _ai;
-  -- B mengganti identitas → A bersih lagi
-  r := public.tednas_ai_simpan(${q(RAHASIA3)}, x.b, x.sb, 1, 'cek', '1 catatan', '{}', '[{"u":3,"nik":"n7","ml":"m9","sha":["s9"]}]', 'uji', null);
-  assert r->>'akhir' = 'cek' and json_array_length(r->'ganda') = 0 and (r->>'terkait')::int = 1, 'B cek karena hasilnya sendiri';
-  -- C memakai berkas yang sama dengan A pemain 2
-  r := public.tednas_ai_simpan(${q(RAHASIA3)}, x.c, x.sc, 1, 'lolos', '', '{}', '[{"u":5,"nik":"","ml":"m5","sha":["s3"]}]', 'uji', null);
-  assert r->>'akhir' = 'cek' and r->'ganda'->0->>'jenis' = 'berkas', 'berkas sama persis = ganda';
-  -- galat: dicoba lagi setelah 30 menit, akhir galat
+  -- B mengganti identitas → bersih → Terverifikasi
+  r := public.tednas_ai_simpan(${q(RAHASIA3)}, x.b, x.sb, 1, 'lolos', '', '{}', '[{"u":3,"nik":"n7","ml":"m9","sha":["s9"]}]', 'uji', null);
+  assert r->>'akhir' = 'lolos' and json_array_length(r->'ganda') = 0 and r->>'status' = 'terverifikasi', 'B bersih → Terverifikasi';
+  -- C (daftar paling akhir) memakai NIK pemain 3 tim B → C cek
+  r := public.tednas_ai_simpan(${q(RAHASIA3)}, x.c, x.sc, 1, 'lolos', '', '{}', '[{"u":5,"nik":"n7","ml":"m5","sha":["s5"]}]', 'uji', null);
+  assert r->>'akhir' = 'cek' and r->'ganda'->0->>'jenis' = 'nik' and r->>'status' is null, 'C cek karena pemain sudah di tim B';
+  -- B gagal diperiksa (galat): status B tetap, kunci B tetap → C tetap tertahan
   r := public.tednas_ai_simpan(${q(RAHASIA3)}, x.b, x.sb, 1, 'galat', 'Web App sibuk', '{}', '[]', 'uji', null);
-  assert r->>'akhir' = 'galat', 'galat';
+  assert r->>'akhir' = 'galat' and r->>'status' is null, 'galat tidak mengubah status';
+  -- satu orang dua kali di tim A → A cek → yang diverifikasi AI kembali Menunggu
+  r := public.tednas_ai_simpan(${q(RAHASIA3)}, x.a, x.sa, 1, 'lolos', '', '{}', '[{"u":1,"nik":"n1","sha":["s1"]},{"u":2,"nik":"n1","sha":["s3"]}]', 'uji', null);
+  assert r->>'akhir' = 'cek' and r->>'status' = 'menunggu', 'pemain ganda dalam satu tim → kembali Menunggu';
+  r := public.tednas_ai_simpan(${q(RAHASIA3)}, x.a, x.sa, 1, 'lolos', '', '{}', '[{"u":1,"nik":"n1","ml":"m1","sha":["s1","s2"]},{"u":2,"nik":"n2","sha":["s3"]}]', 'uji', null);
+  assert r->>'akhir' = 'lolos' and r->>'status' = 'terverifikasi', 'A bersih lagi → Terverifikasi';
 end $u$;
 reset role;
 do $u$ begin
-  assert (select akhir from public.tednas_ai where tim_id = (select a from _ai)) = 'cek', 'A cek karena berkas sama dengan C';
-  assert not exists (select 1 from public.tednas_ai a, jsonb_array_elements(a.ganda) g where a.tim_id = (select a from _ai) and g->>'jenis' = 'nik'), 'ganda NIK A sudah hilang';
+  assert (select status from public.tednas_tim where id = (select b from _ai)) = 'terverifikasi', 'B tetap Terverifikasi walau galat';
+  assert (select akhir from public.tednas_ai where tim_id = (select c from _ai)) = 'cek', 'C tetap tertahan saat B galat';
   update public.tednas_ai set pada = now() - interval '31 minutes' where tim_id = (select b from _ai);
 end $u$;
 set role anon;
@@ -343,49 +354,53 @@ do $u$ begin
   assert exists (select 1 from json_array_elements(public.tednas_ai_antre(${q(RAHASIA3)}, 1, 50)->'tim') e where (e->>'id')::uuid = (select b from _ai)), 'galat lama antre lagi';
 end $u$;
 reset role;
--- C dihapus → catatan ganda di A dibersihkan tednas_ai_segarkan
-delete from public.tednas_tim where id = (select c from _ai);
+-- B dihapus → C tidak tertahan lagi: tednas_ai_segarkan menghitung ulang & memverifikasi C
+delete from public.tednas_tim where id = (select b from _ai);
 do $u$ begin
-  assert not exists (select 1 from public.tednas_ai where tim_id = (select c from _ai)) and not exists (select 1 from public.tednas_ai_kunci where tim_id = (select c from _ai)), 'hasil AI ikut terhapus';
-  assert (select akhir from public.tednas_ai where tim_id = (select a from _ai)) = 'cek', 'ganda basi sebelum disegarkan';
+  assert not exists (select 1 from public.tednas_ai where tim_id = (select b from _ai)) and not exists (select 1 from public.tednas_ai_kunci where tim_id = (select b from _ai)), 'hasil AI ikut terhapus';
+  assert (select akhir from public.tednas_ai where tim_id = (select c from _ai)) = 'cek', 'ganda basi sebelum disegarkan';
 end $u$;
 set role anon;
-do $u$ begin
-  assert (public.tednas_ai_segarkan(${q(RAHASIA3)})->>'dihitung')::int >= 1, 'segarkan';
+do $u$ declare r json; begin
+  r := public.tednas_ai_segarkan(${q(RAHASIA3)});
+  assert (r->>'dihitung')::int >= 1 and (r->>'diubah')::int >= 1, 'segarkan';
 end $u$;
 reset role;
 do $u$ begin
-  assert (select akhir from public.tednas_ai where tim_id = (select a from _ai)) = 'lolos', 'A lolos lagi setelah C dihapus';
+  assert (select akhir from public.tednas_ai where tim_id = (select c from _ai)) = 'lolos', 'C lolos setelah B dihapus';
+  assert (select status = 'terverifikasi' and status_oleh = 'ai' from public.tednas_tim where id = (select c from _ai)), 'C diverifikasi AI';
 end $u$;
--- status berubah TIDAK membuat tim diperiksa ulang; pemain berubah YA
-update public.tednas_tim set status = 'terverifikasi' where id = (select b from _ai);
+-- perubahan status TIDAK membuat tim diperiksa ulang; pemain berubah YA
 set role anon;
 do $u$ begin
-  assert not exists (select 1 from json_array_elements(public.tednas_ai_antre(${q(RAHASIA3)}, 1, 50)->'tim') e where (e->>'id')::uuid = (select a from _ai)), 'A tidak antre';
+  assert not exists (select 1 from json_array_elements(public.tednas_ai_antre(${q(RAHASIA3)}, 1, 50)->'tim') e where (e->>'id')::uuid in ((select a from _ai), (select c from _ai))), 'A & C tidak antre';
 end $u$;
 reset role;
--- admin: baca, statistik, verifikasi sekaligus (hanya menunggu + lolos + belum berubah), periksa ulang
+-- admin: baca, statistik, membatalkan verifikasi (tidak ditimpa AI), periksa ulang
 set uji.uid = '00000000-0000-0000-0000-00000000a001';
 set role authenticated;
-do $u$ declare s json; r json; begin
+do $u$ declare s json; begin
   assert (select count(*) from public.tednas_ai) >= 2, 'admin membaca hasil AI';
   s := public.tednas_ai_statistik();
-  assert (s->>'lolos')::int = 1 and (s->>'antre')::int >= 1, 'statistik AI';
-  r := public.tednas_ai_verifikasi_lolos(array[(select a from _ai), (select b from _ai)]);
-  assert (r->>'diverifikasi')::int = 1, 'hanya A yang diverifikasi';
-  assert (select status from public.tednas_tim where id = (select a from _ai)) = 'terverifikasi', 'A terverifikasi';
-  delete from public.tednas_ai where tim_id = (select b from _ai);
-  assert not exists (select 1 from public.tednas_ai where tim_id = (select b from _ai)), 'periksa ulang = hapus hasil';
+  assert (s->>'otomatis')::int = 2 and (s->>'cek')::int = 0 and (s->>'antre')::int >= 1, 'statistik AI ' || s::text;
+  update public.tednas_tim set status = 'menunggu' where id = (select a from _ai);
+  assert (select status_oleh from public.tednas_tim where id = (select a from _ai)) = 'admin', 'pengubah status tercatat admin';
+  delete from public.tednas_ai where tim_id = (select c from _ai);
+  assert not exists (select 1 from public.tednas_ai where tim_id = (select c from _ai)), 'periksa ulang = hapus hasil';
 end $u$;
 reset role;
--- pemain A berubah setelah lolos → verifikasi sekaligus melewatinya, dan A antre lagi
-update public.tednas_tim set status = 'menunggu' where id = (select a from _ai);
-update public.tednas_pemain set nama = nama || ' Baru' where tim_id = (select a from _ai) and urutan = 1;
-set role authenticated;
+set role anon;
+do $u$ declare r json; x record; begin
+  select * into x from _ai;
+  r := public.tednas_ai_simpan(${q(RAHASIA3)}, x.a, x.sa, 1, 'lolos', '', '{}', '[{"u":1,"nik":"n1"}]', 'uji', null);
+  assert r->>'akhir' = 'lolos' and r->>'status' is null, 'keputusan admin tidak ditimpa AI';
+  perform public.tednas_ai_segarkan(${q(RAHASIA3)});
+end $u$;
+reset role;
 do $u$ begin
-  assert (public.tednas_ai_verifikasi_lolos(array[(select a from _ai)])->>'diverifikasi')::int = 0, 'hasil basi tidak diverifikasi';
+  assert (select status from public.tednas_tim where id = (select a from _ai)) = 'menunggu', 'segarkan juga tidak menimpa admin';
 end $u$;
-reset role;
+update public.tednas_pemain set nama = nama || ' Baru' where tim_id = (select a from _ai) and urutan = 1;
 set role anon;
 do $u$ begin
   assert exists (select 1 from json_array_elements(public.tednas_ai_antre(${q(RAHASIA3)}, 1, 50)->'tim') e where (e->>'id')::uuid = (select a from _ai)), 'pemain berubah → antre lagi';
@@ -398,7 +413,6 @@ do $u$ begin
 end $u$;
 reset role;
 ${harusGagal(`select public.tednas_ai_statistik()`, "BUKAN_ADMIN", "authenticated")}
-${harusGagal(`select public.tednas_ai_verifikasi_lolos(array[gen_random_uuid()])`, "BUKAN_ADMIN", "authenticated")}
 set uji.uid = '00000000-0000-0000-0000-00000000a001';
 ${harusGagal(`select public.tednas_ai_statistik()`, "permission denied")}
 ${harusGagal(`select count(*) from public.tednas_ai`, "permission denied")}
@@ -406,6 +420,7 @@ ${harusGagal(`select count(*) from public.tednas_ai_kunci`, "permission denied",
 ${harusGagal(`insert into public.tednas_ai (tim_id, sidik, hasil, akhir) values (gen_random_uuid(), 'x', 'lolos', 'lolos')`, "permission denied", "authenticated")}
 ${harusGagal(`select public.tednas_ai_sidik(gen_random_uuid())`, "permission denied")}
 ${harusGagal(`select public.tednas_ai_ganda_hitung(gen_random_uuid())`, "permission denied")}
+${harusGagal(`select public.tednas_ai_terapkan(gen_random_uuid())`, "permission denied", "authenticated")}
 ${harusGagal(`select ai_rahasia from public.tednas_rahasia`, "permission denied", "authenticated")}
 \\echo SEMUA_LULUS
 `;

@@ -5,13 +5,19 @@
  * Tiap putaran:
  *  1. Ambil tim yang perlu diperiksa dari Supabase (tednas_ai_antre, berkunci ai_rahasia).
  *  2. Ambil berkasnya dari Web App Google Drive utama (aksi "berkas" + kunci_ai). PDF → gambar (pdftoppm).
- *  3. Minta model penglihatan lokal (qwen3.5:9b di armada worker JOT) MEMBACA tiap berkas (nilai.mjs).
- *  4. Nilai dengan aturan peraturan (nilai.mjs), simpan (tednas_ai_simpan). Status tim TIDAK diubah: admin yang
- *     menekan Verifikasi.
+ *  3. Minta model penglihatan MEMBACA tiap berkas (nilai.mjs).
+ *  4. Nilai dengan aturan peraturan (nilai.mjs), simpan (tednas_ai_simpan). Database langsung mengubah status
+ *     tim yang lolos menjadi Terverifikasi; yang "cek" tetap Menunggu untuk admin.
  *
- * Model dipanggil LANGSUNG ke worker yang sehat & hangat menurut /lb/keadaan, tidak lewat LB. LB jatuh ke
- * Ollama dapur bila worker habis, dan beban gambar di dapur bisa menghabiskan RAM server. Tanpa worker, agen
- * menunggu.
+ * Model (TEDNAS_MESIN):
+ *  - "pool" (bawaan, permintaan user 16 Nov): Qwen3.6-35B-A3B di pool GPU gabungan Gambir. Alamat kepala dibaca
+ *    dari berkas broker (/home/jot/rpc-broker/pool-head.txt + pool-model.txt); selama ada antrean agen menyalakan
+ *    want-heavy + last-request supaya broker merakit/menahan pool (cara yang sama dengan Kawan Bicara). Pool
+ *    harus dinyalakan dengan mmproj (/props modalities.vision); tanpa itu dianggap belum siap. Pool belum siap
+ *    = agen menunggu.
+ *  - "pool+armada": seperti di atas, tetapi selagi pool belum siap pakai qwen3.5:9b di armada worker.
+ *  - "armada": hanya qwen3.5:9b, LANGSUNG ke worker yang sehat & hangat menurut /lb/keadaan, tidak lewat LB (LB
+ *    jatuh ke Ollama dapur bila worker habis, dan beban gambar di dapur bisa menghabiskan RAM server).
  * Data pribadi (nama, NIK) tidak ditulis ke log. NIK disimpan sebagai HMAC (untuk mencari yang ganda) +
  * versi tersamar.
  *
@@ -20,27 +26,34 @@
  *   node agen-ai/agen.mjs --coba <gambar> <identitas|profil_ml|follow_esports|follow_ppdt|izin> [nama]
  *                                      uji satu gambar lokal (tanpa Supabase/Drive)
  * Lingkungan (berkas env, lihat agen-ai/README.md): TEDNAS_SUPABASE_URL, TEDNAS_SUPABASE_KUNCI_PUBLIK,
- *   TEDNAS_DRIVE_URL, TEDNAS_AI_KUNCI, TEDNAS_LB_URL (bawaan http://127.0.0.1:11435), TEDNAS_MODEL (qwen3.5:9b),
- *   TEDNAS_PARALEL (3).
+ *   TEDNAS_DRIVE_URL, TEDNAS_AI_KUNCI, TEDNAS_MESIN (pool), TEDNAS_POOL_DIR (/home/jot/rpc-broker),
+ *   TEDNAS_POOL_MODEL (35B), TEDNAS_POOL_PARALEL (2), TEDNAS_LB_URL (http://127.0.0.1:11435),
+ *   TEDNAS_MODEL (qwen3.5:9b), TEDNAS_PARALEL (3, untuk armada).
  */
 import { createHash, createHmac } from "node:crypto";
-import { mkdtempSync, writeFileSync, readFileSync, readdirSync, rmSync } from "node:fs";
+import { mkdtempSync, writeFileSync, readFileSync, readdirSync, rmSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { execFile } from "node:child_process";
 import * as N from "./nilai.mjs";
 
 const E = process.env;
-const CFG = {
+export const CFG = {
   sb: (E.TEDNAS_SUPABASE_URL || "").replace(/\/$/, ""),
   sbKunci: E.TEDNAS_SUPABASE_KUNCI_PUBLIK || "",
   drive: E.TEDNAS_DRIVE_URL || "",
   kunci: E.TEDNAS_AI_KUNCI || "",
+  mesin: ["pool", "pool+armada", "armada"].includes(E.TEDNAS_MESIN) ? E.TEDNAS_MESIN : "pool",
+  poolDir: E.TEDNAS_POOL_DIR || "/home/jot/rpc-broker",
+  poolModel: (E.TEDNAS_POOL_MODEL || "35B").split(",").map((s) => s.trim()).filter(Boolean),
+  poolParalel: Math.max(1, Math.min(4, Number(E.TEDNAS_POOL_PARALEL) || 2)),
   lb: (E.TEDNAS_LB_URL || "http://127.0.0.1:11435").replace(/\/$/, ""),
   model: E.TEDNAS_MODEL || "qwen3.5:9b",
   paralel: Math.max(1, Math.min(6, Number(E.TEDNAS_PARALEL) || 3)),
 };
-const MODEL_LABEL = () => `${CFG.model} · agen v${N.VERSI_AGEN}`;
+const NAMA_POOL = { "35B": "Qwen3.6-35B-A3B", "30B": "Qwen3-Coder-30B", "80B": "Qwen3-Next-80B" };
+const terpakai = new Set(); // model yang benar-benar menjawab untuk tim yang sedang diperiksa
+const MODEL_LABEL = () => `${[...terpakai].join(" + ") || "-"} · agen v${N.VERSI_AGEN}`;
 const TUNDA = Number(E.TEDNAS_TUNDA_KALI ?? 1); // uji: 0 = tanpa jeda coba-ulang
 const tidur = (ms) => new Promise((ok) => setTimeout(ok, ms * TUNDA));
 const log = (...a) => console.log(new Date().toISOString().slice(0, 19).replace("T", " "), ...a);
@@ -114,25 +127,121 @@ async function pilihWorker(f) {
   }
 }
 
-/** Satu pertanyaan + gambar → objek JSON sesuai skema. Pindah worker bila gagal. */
-export async function tanyaModel({ prompt, format }, gambar, f = fetch) {
-  let alasan = "";
-  for (let i = 0; i < 4; i++) {
-    const w = await pilihWorker(f);
-    dipakai.set(w.host, (dipakai.get(w.host) || 0) + 1);
+async function tanyaArmada({ prompt, format }, gambar, f) {
+  const w = await pilihWorker(f);
+  dipakai.set(w.host, (dipakai.get(w.host) || 0) + 1);
+  try {
+    const r = await f(`http://${w.host}:11434/api/chat`, {
+      method: "POST", headers: { "content-type": "application/json" }, signal: AbortSignal.timeout(180000),
+      body: JSON.stringify({ model: CFG.model, stream: false, think: false, keep_alive: "60m", format, options: { temperature: 0 },
+        messages: [{ role: "user", content: prompt, ...(gambar?.length ? { images: gambar.map((g) => g.toString("base64")) } : {}) }] }),
+    });
+    const j = await r.json();
+    if (!r.ok || j.error) throw new Error(j.error || `HTTP ${r.status}`);
+    const h = JSON.parse(j.message.content);
+    terpakai.add(CFG.model);
+    return h;
+  } catch (e) {
+    rehat.set(w.host, Date.now() + 5 * 60000);
+    throw new Error(`${w.nama}: ${e.message}`);
+  } finally { dipakai.set(w.host, (dipakai.get(w.host) || 1) - 1); }
+}
+
+/* ── Pool GPU gabungan (broker /home/jot/rpc-broker) ──────────────────── */
+let pool = { url: "", tag: "", siap: false, slot: 1, pada: 0, alasan: "" };
+let poolRehat = 0; // pool baru saja gagal menjawab: jangan dipakai sampai waktu ini
+const bacaPool = (n) => { try { return readFileSync(join(CFG.poolDir, n), "utf8").trim(); } catch { return ""; } };
+
+/** Pool siap = kepala tercatat broker, model yang diizinkan, /health ok, dan bisa membaca gambar (mmproj). */
+export async function cekPool(f = fetch, paksa = false) {
+  if (!paksa && Date.now() - pool.pada < 15000 * TUNDA) return pool;
+  const kepala = bacaPool("pool-head.txt"), tag = bacaPool("pool-model.txt");
+  let url = "", siap = false, slot = pool.slot, alasan = "pool belum dirakit";
+  if (/^100\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(kepala) && CFG.poolModel.includes(tag) && Date.now() >= poolRehat) {
+    url = `http://${kepala}:8080`;
+    alasan = "pool sedang memuat model";
     try {
-      const r = await f(`http://${w.host}:11434/api/chat`, {
-        method: "POST", headers: { "content-type": "application/json" }, signal: AbortSignal.timeout(180000),
-        body: JSON.stringify({ model: CFG.model, stream: false, think: false, keep_alive: "60m", format, options: { temperature: 0 },
-          messages: [{ role: "user", content: prompt, ...(gambar?.length ? { images: gambar.map((g) => g.toString("base64")) } : {}) }] }),
-      });
-      const j = await r.json();
-      if (!r.ok || j.error) throw new Error(j.error || `HTTP ${r.status}`);
-      return JSON.parse(j.message.content);
-    } catch (e) {
-      alasan = `${w.nama}: ${e.message}`;
-      rehat.set(w.host, Date.now() + 5 * 60000);
-    } finally { dipakai.set(w.host, (dipakai.get(w.host) || 1) - 1); }
+      const h = await f(`${url}/health`, { signal: AbortSignal.timeout(6000) });
+      if (h.ok && (await h.json()).status === "ok") {
+        const pr = await (await f(`${url}/props`, { signal: AbortSignal.timeout(6000) })).json();
+        slot = Math.max(1, Math.min(4, Number(pr?.total_slots) || 1));
+        siap = pr?.modalities?.vision === true;
+        if (!siap) alasan = "pool jalan tanpa mmproj (tidak bisa membaca gambar)";
+      }
+    } catch { /* belum siap */ }
+  } else if (kepala && !CFG.poolModel.includes(tag)) alasan = `pool sedang memuat model lain (${tag || "?"})`;
+  else if (Date.now() < poolRehat) alasan = "pool baru saja gagal menjawab";
+  pool = { url, tag, siap, slot, pada: Date.now(), alasan: siap ? "" : alasan };
+  return pool;
+}
+
+let laporTerakhir = 0;
+/** Minta broker merakit / menahan pool (want-heavy + last-request), seperti Kawan Bicara. */
+export function mintaPool() {
+  if (!existsSync(CFG.poolDir)) return;
+  // Pool sedang memuat model yang tidak kita pakai (mis. 30B coder untuk pemanggil lain): jangan ikut menahannya.
+  if (bacaPool("pool-head.txt") && !CFG.poolModel.includes(bacaPool("pool-model.txt"))) return;
+  try {
+    if (!existsSync(join(CFG.poolDir, "want-heavy"))) writeFileSync(join(CFG.poolDir, "want-heavy"), "");
+    if (Date.now() - laporTerakhir >= 30000 * TUNDA) {
+      laporTerakhir = Date.now();
+      writeFileSync(join(CFG.poolDir, "last-request"), Math.floor(Date.now() / 1000) + "\n");
+    }
+  } catch (e) { log("lapor broker gagal:", e.message); }
+}
+
+const mimeGambar = (b) => (b[0] === 0x89 && b[1] === 0x50 ? "image/png" : b.subarray(0, 4).toString() === "RIFF" ? "image/webp"
+  : b.subarray(0, 3).toString() === "GIF" ? "image/gif" : "image/jpeg");
+
+async function tanyaPool({ prompt, format }, gambar, f) {
+  const isi = gambar?.length
+    ? [{ type: "text", text: prompt }, ...gambar.map((g) => ({ type: "image_url", image_url: { url: `data:${mimeGambar(g)};base64,${g.toString("base64")}` } }))]
+    : prompt;
+  const r = await f(`${pool.url}/v1/chat/completions`, {
+    method: "POST", headers: { "content-type": "application/json" }, signal: AbortSignal.timeout(300000),
+    body: JSON.stringify({ messages: [{ role: "user", content: isi }], temperature: 0, max_tokens: 600,
+      response_format: { type: "json_schema", json_schema: { name: "hasil", schema: format } },
+      chat_template_kwargs: { enable_thinking: false } }),
+  });
+  const t = await r.text();
+  let j; try { j = JSON.parse(t); } catch { throw new Error(`pool HTTP ${r.status} bukan JSON`); }
+  if (!r.ok) {
+    const pesan = String(j?.error?.message || `HTTP ${r.status}`).slice(0, 160);
+    // Gambar yang tak bisa dibuka model (mis. format aneh) = tetap: dicatat untuk admin, bukan dicoba ulang.
+    if (r.status === 400 && /image|bitmap|media|decode/i.test(pesan)) throw Object.assign(new Error("Gambar tidak bisa dibuka model (format tidak didukung): cek manual."), { tetap: true });
+    throw new Error(pesan);
+  }
+  const h = JSON.parse(j.choices[0].message.content);
+  terpakai.add(`${NAMA_POOL[pool.tag] || pool.tag} (pool GPU)`);
+  return h;
+}
+
+const statusBroker = () => bacaPool("status.txt").replace(/^\S+ \S+ \| /, "").slice(0, 120);
+
+/** Satu pertanyaan + gambar → objek JSON sesuai skema. Pool dulu (menunggu bila belum siap), lalu armada sesuai TEDNAS_MESIN. */
+export async function tanyaModel(q, gambar, f = fetch) {
+  let alasan = "", tunggu = 0;
+  for (let gagal = 0; gagal < 4;) {
+    if (CFG.mesin !== "armada") {
+      mintaPool();
+      const p = await cekPool(f);
+      if (p.siap) {
+        try { return await tanyaPool(q, gambar, f); }
+        catch (e) {
+          if (e.tetap) throw e;
+          alasan = `pool: ${e.message}`; gagal++;
+          poolRehat = Date.now() + 60000 * TUNDA; pool.pada = 0;
+          continue;
+        }
+      }
+      if (CFG.mesin === "pool") {
+        if (tunggu++ % 20 === 0) log(`menunggu pool GPU: ${p.alasan}${statusBroker() ? ` · broker: ${statusBroker()}` : ""}`);
+        await tidur(30000);
+        continue;
+      }
+    }
+    try { return await tanyaArmada(q, gambar, f); }
+    catch (e) { alasan = e.message; gagal++; }
   }
   throw new Error(`model gagal 4 kali (${alasan})`);
 }
@@ -160,6 +269,10 @@ export async function periksaTim(t, alat = {}) {
   const mulai = Date.now();
   const baca = {}, sha = {};
   let sementara = null; // galat yang layak dicoba lagi (Web App / model)
+  terpakai.clear();
+  if (CFG.mesin !== "armada") await cekPool(f);
+  const paralel = () => (CFG.mesin === "armada" || (CFG.mesin === "pool+armada" && !pool.siap) ? CFG.paralel : Math.min(CFG.poolParalel, pool.slot));
+  const tetap = (e) => /^PDF tidak bisa dibuka/.test(e.message) || e.tetap;
 
   const tugas = [];
   for (const p of t.pemain || []) {
@@ -178,13 +291,13 @@ export async function periksaTim(t, alat = {}) {
           baca[p.urutan][kunci] = await tanyaModel(pertanyaan(kolom, p), gambar, f);
         } catch (e) {
           if (e.fatal) throw e;
-          if (/^PDF tidak bisa dibuka/.test(e.message)) baca[p.urutan][kunci] = { galat: e.message };
+          if (tetap(e)) baca[p.urutan][kunci] = { galat: e.message };
           else sementara = e.message;
         }
       });
     }
   }
-  await berbarengan(tugas, CFG.paralel);
+  await berbarengan(tugas, paralel());
 
   // Surat izin: baca hanya untuk yang umurnya < 17 (hemat model).
   const izin = [];
@@ -197,10 +310,10 @@ export async function periksaTim(t, alat = {}) {
       try {
         const gambar = b.mime === "application/pdf" ? await pdf(b.data) : [b.data];
         baca[p.urutan].izin = await tanyaModel(pertanyaan("izin_path", p), gambar, f);
-      } catch (e) { if (/^PDF tidak bisa dibuka/.test(e.message)) baca[p.urutan].izin = { galat: e.message }; else sementara = e.message; }
+      } catch (e) { if (tetap(e)) baca[p.urutan].izin = { galat: e.message }; else sementara = e.message; }
     });
   }
-  await berbarengan(izin, CFG.paralel);
+  await berbarengan(izin, paralel());
 
   let namaTim = null;
   try { namaTim = await tanyaModel(N.tanyaNamaTim(t.nama_tim), null, f); } catch (e) { sementara = e.message; }
@@ -242,7 +355,7 @@ function cekKonfig() {
 
 async function jalan(sekali) {
   cekKonfig();
-  log(`agen AI TEDNas v${N.VERSI_AGEN} mulai · model ${CFG.model} · paralel ${CFG.paralel}`);
+  log(`agen AI TEDNas v${N.VERSI_AGEN} mulai · mesin ${CFG.mesin}${CFG.mesin !== "armada" ? ` (pool ${CFG.poolModel.join("/")}, paralel ${CFG.poolParalel})` : ""}${CFG.mesin !== "pool" ? ` · armada ${CFG.model} paralel ${CFG.paralel}` : ""}`);
   let segar = 0, berhenti = false;
   process.on("SIGTERM", () => { berhenti = true; log("berhenti (SIGTERM) setelah tim yang sedang diperiksa"); });
   while (!berhenti) {

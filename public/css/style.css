@@ -363,6 +363,7 @@ dialog h3 { color: var(--ungu-tua); margin-bottom: 8px; font-size: 18px; font-we
 .lencana-ai.ai-cek { color: #8a5a00; background: #fff6dc; }
 .ai-bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; margin: 0 0 14px; padding: 10px 12px; background: var(--kabut-2); border-left: 3px solid var(--ungu); font-size: 14px; }
 .ai-bar p { margin: 0; }
+.ai-bar small { display: block; margin-top: 2px; color: var(--teks-2); }
 #d-pemain { width: min(640px, calc(100vw - 32px)); }
 .ai-kotak { margin: 10px 0 6px; padding: 10px 12px; font-size: 14px; border-left: 3px solid var(--garis); background: var(--kabut-2); }
 .ai-kotak.ai-lolos { border-color: var(--hijau); }

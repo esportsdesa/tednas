@@ -10,7 +10,8 @@ EnvironmentFile=%h/tednas-ai/tednas-ai.env
 ExecStart=/opt/node-jot/bin/node %h/tednas-ai/agen.mjs
 Restart=always
 RestartSec=30
-# Server dapur RAM-nya tipis: agen ringan (±60 MB), dipagari & jadi korban duluan bila memori habis.
+# Model ada di pool GPU (PC lain); agen di dapur hanya mengambil berkas & menilai (±60 MB).
+# Server dapur RAM-nya tipis: dipagari & jadi korban duluan bila memori habis.
 MemoryMax=300M
 MemorySwapMax=0
 OOMScoreAdjust=800

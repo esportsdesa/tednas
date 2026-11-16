@@ -2,7 +2,7 @@
   const { $, $$, esc, angka } = U;
   const PER_HAL = 25;
   const LABEL_J3 = 'Perebutan Juara 3';
-  let dari = 0, tundaCari, timHal = [], matchHal = [], galeriHal = [], matchEdit = null, timHapus = null, timDialog = null, aiLolos = [];
+  let dari = 0, tundaCari, timHal = [], matchHal = [], galeriHal = [], matchEdit = null, timHapus = null, timDialog = null;
 
   /* ---------- Masuk ---------- */
   async function mulai() {
@@ -50,24 +50,29 @@
     muatRingkasAi();
   }
 
-  /* ---------- Cek AI (agen-ai/ di server: membaca berkas, admin yang memutuskan) ---------- */
+  /* ---------- Cek AI (agen-ai/ di server): lolos semua = langsung Terverifikasi; perlu dicek = admin memutuskan ---------- */
   async function muatRingkasAi() {
     $('#t-ai').hidden = $('#t-ai-bar').hidden = !DB.aiAda;
     if (!DB.aiAda) return;
     try {
       const a = await DB.statistikAi();
-      $('#t-ai-teks').innerHTML = `<b>Cek AI</b> · tim menunggu verifikasi: <b>${angka(a.lolos)}</b> lolos semua pemeriksaan, <b>${angka(a.cek)}</b> perlu dicek`
-        + (a.galat ? `, <b>${angka(a.galat)}</b> sedang diulang` : '') + (a.antre ? ` · <b>${angka(a.antre)}</b> tim dalam antrean agen` : '') + '.';
-      const b = $('#t-ai-verif');
-      b.hidden = !a.lolos;
-      b.textContent = `Verifikasi ${angka(a.lolos)} tim yang lolos AI`;
+      $('#t-ai-teks').innerHTML = `<b>Cek AI</b> · <b>${angka(a.otomatis)}</b> tim diverifikasi otomatis, <b>${angka(a.cek)}</b> menunggu dicek admin`
+        + (a.galat ? `, <b>${angka(a.galat)}</b> sedang diulang` : '') + (a.antre ? ` · <b>${angka(a.antre)}</b> tim dalam antrean agen` : '') + '.'
+        + ' <small>Tim yang lolos semua pemeriksaan langsung Terverifikasi. Status yang diubah admin tidak pernah ditimpa AI.</small>';
     } catch (e) { $('#t-ai-teks').textContent = 'Cek AI: ringkasan gagal dimuat (' + e.message + ').'; }
   }
 
   const JENIS_GANDA = { nik: 'NIK', ml: 'ID Mobile Legends', berkas: 'Berkas yang sama persis' };
-  const teksGanda = (g, t) => `${JENIS_GANDA[g.jenis] || g.jenis} sama dengan ${g.kode === t.kode ? 'pemain ' + g.u_lain + ' di tim ini' : g.kode + ' pemain ' + g.u_lain}.`;
+  // 1 orang hanya boleh di 1 tim: yang ditandai tim yang mendaftar belakangan (g.dulu = pasangannya lebih dulu / satu tim).
+  const gandaCek = (g) => g.dulu !== false;
+  const teksGanda = (g, t) => {
+    const sama = `${JENIS_GANDA[g.jenis] || g.jenis} sama dengan`;
+    if (g.kode === t.kode) return `${sama} pemain ${g.u_lain} di tim ini. 1 orang hanya boleh terdaftar sekali.`;
+    return gandaCek(g) ? `${sama} ${g.kode} pemain ${g.u_lain}, yang mendaftar lebih dulu. 1 orang hanya boleh di 1 tim.`
+      : `${sama} ${g.kode} pemain ${g.u_lain}, yang mendaftar belakangan (tim itu yang ditandai).`;
+  };
   const jumlahCekAi = (a) => [...((a.rincian && a.rincian.tim) || []), ...((a.rincian && a.rincian.pemain) || []).flatMap((p) => p.butir)]
-    .filter((b) => b.s === 'cek').length + (a.ganda || []).length;
+    .filter((b) => b.s === 'cek').length + (a.ganda || []).filter(gandaCek).length;
 
   function selAi(t) {
     if (!DB.aiAda) return '';
@@ -87,7 +92,7 @@
     return `<div class="ai-kotak ai-${esc(a.akhir)}"><b>${judul}</b>`
       + (a.akhir === 'galat' ? `<small>${esc(a.ringkas)}</small>` : '')
       + (timCek.length ? `<ul>${timCek.map((b) => `<li class="ai-cek">${esc(b.t)}</li>`).join('')}</ul>` : '')
-      + `<small>Diperiksa ${esc(U.waktu(a.pada))} · ${esc(a.model)}. AI hanya membaca berkas; keputusan tetap di admin.</small></div>`;
+      + `<small>Diperiksa ${esc(U.waktu(a.pada))} · ${esc(a.model)}. Lolos semua pemeriksaan = otomatis Terverifikasi; catatan "perlu dicek" diputuskan admin.</small></div>`;
   }
 
   function aiPemain(t, p) {
@@ -103,32 +108,10 @@
     const nOk = r ? r.butir.filter((b) => b.s === 'ok').length : 0;
     return `<div class="ai-pemain">${info ? `<small>${esc(info)}</small>` : ''}<ul>`
       + butir.map((b) => `<li class="ai-${esc(b.s)}">${esc(b.t)}</li>`).join('')
-      + ganda.map((g) => `<li class="ai-cek">${esc(teksGanda(g, t))}</li>`).join('')
+      + ganda.map((g) => `<li class="ai-${gandaCek(g) ? 'cek' : 'info'}">${esc(teksGanda(g, t))}</li>`).join('')
       + (nOk ? `<li class="ai-ok">${nOk} pemeriksaan sesuai</li>` : '') + '</ul></div>';
   }
 
-  $('#t-ai-verif').onclick = async () => {
-    try {
-      aiLolos = await DB.idLolosAi({ prov: $('#t-prov').value });
-      if (!aiLolos.length) { U.pesan('Tidak ada tim menunggu yang lolos AI' + ($('#t-prov').value ? ' di provinsi ini.' : '.')); return; }
-      const prov = $('#t-prov').value ? ' di ' + $('#t-prov').selectedOptions[0].textContent : '';
-      $('#d-ai-verif-teks').textContent = `${angka(aiLolos.length)} tim${prov} yang berstatus Menunggu dan lolos semua pemeriksaan AI akan diubah menjadi Terverifikasi. Tim yang berubah sejak diperiksa AI dilewati.`;
-      $('#d-ai-verif').showModal();
-    } catch (e) { U.pesan('Gagal memuat tim lolos AI: ' + e.message, 'gagal'); }
-  };
-  $('#d-ai-verif-ya').onclick = async () => {
-    const b = $('#d-ai-verif-ya'); let n = 0;
-    b.disabled = true;
-    try {
-      // 10 tim per panggilan: tiap tim yang berubah status mengirim kabar ke Google Drive.
-      for (let i = 0; i < aiLolos.length; i += 10) {
-        n += (await DB.verifikasiLolos(aiLolos.slice(i, i + 10))).diverifikasi;
-        b.textContent = `${n} tim...`;
-      }
-      U.pesan(`${angka(n)} tim diverifikasi.`, 'ok');
-    } catch (e) { U.pesan(`Berhenti setelah ${n} tim: ${e.message}`, 'gagal'); }
-    finally { b.disabled = false; b.textContent = 'Ya, Verifikasi'; $('#d-ai-verif').close(); muatTim(); muatRingkas(); }
-  };
   $('#d-pemain-ulang').onclick = async () => {
     const t = timDialog; if (!t) return;
     try { await DB.periksaUlangAi(t.id); $('#d-pemain').close(); U.pesan(`${t.nama_tim} akan diperiksa ulang AI dalam beberapa menit.`, 'ok'); muatTim(); muatRingkasAi(); }
@@ -147,7 +130,7 @@
         <td><a href="https://wa.me/${esc(t.wa_kapten)}" target="_blank" rel="noopener">+${esc(t.wa_kapten)}</a></td>
         <td>${esc(t.desa)}<small>Kec. ${esc(t.kecamatan)}, ${esc(t.kabupaten)}<br>${esc(t.provinsi)}</small></td>
         <td><button class="btn btn-garis-gelap btn-kecil" data-pemain="${esc(t.id)}">Lihat ${t.pemain.length} pemain</button></td>
-        <td><span class="lencana ${esc(t.status)}">${t.status === 'terverifikasi' ? 'Terverifikasi' : 'Menunggu'}</span></td>
+        <td><span class="lencana ${esc(t.status)}"${t.status_oleh === 'ai' ? ' title="Diubah otomatis oleh agen AI"' : ''}>${t.status === 'terverifikasi' ? 'Terverifikasi' : 'Menunggu'}${t.status_oleh === 'ai' ? ' · AI' : ''}</span></td>
         ${selAi(t)}
         <td><div class="aksi-sel">
           <button class="btn btn-kecil ${t.status === 'terverifikasi' ? 'btn-garis-gelap' : ''}" data-ver="${esc(t.id)}">${t.status === 'terverifikasi' ? 'Batalkan' : 'Verifikasi'}</button>

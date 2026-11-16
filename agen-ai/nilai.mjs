@@ -3,33 +3,41 @@
  * Murni (tanpa jaringan/berkas), supaya bisa diuji tuntas: uji/uji-ai.mjs.
  *
  * AI hanya MEMBACA isi gambar. Keputusan "sesuai/tidak" diambil kode di bawah dari hasil bacaan itu, jadi
- * aturannya bisa diperiksa orang. Hasil akhir tetap rekomendasi: yang menekan Verifikasi adalah admin.
+ * aturannya bisa diperiksa orang. Tim yang lolos langsung Terverifikasi (permintaan user 16 Nov 2026, dijalankan
+ * tednas_ai_simpan di database); tim yang "cek" tetap Menunggu sampai admin memutuskan.
  */
+import { PROVINSI, KABKOTA } from "./wilayah.mjs";
 
-export const VERSI_AGEN = 1;
+// v2 (16 Nov): identitas apa pun yang memuat nama & alamat (KTP/KK/KIA/kartu pelajar/suket/SIM/lain);
+// domisili = SATU PROVINSI dengan tim (bukan lagi sekabupaten); nama tim bebas (hanya dicek kepantasannya).
+export const VERSI_AGEN = 2;
 export const TANGGAL_ACUAN = "2027-01-15"; // Peraturan A: "Berusia 15–30 tahun per 15 Januari 2027"
 export const UMUR_MIN = 15, UMUR_MAKS = 30, UMUR_IZIN = 17;
 export const AKUN_IG = { follow_esports_path: "esportsdesa.official", follow_ppdt_path: "ditjen_ppdt" };
 
-/* ── Pertanyaan untuk model (format = JSON Schema; Ollama memaksa keluaran mengikuti skema) ── */
+/* ── Pertanyaan untuk model (format = JSON Schema; server model memaksa keluaran mengikuti skema) ── */
 
 const obj = (props) => ({ type: "object", properties: props, required: Object.keys(props) });
 const S = { type: "string" }, B = { type: "boolean" };
+const JENIS_DOK = ["KTP", "KK", "KIA", "Kartu Pelajar", "Suket", "SIM", "lain", "bukan_identitas", "tidak_terbaca"];
 
 export function tanyaIdentitas(jenis, nama) {
   return {
     prompt: `Ini foto dokumen identitas seorang pendaftar turnamen esports desa. Pendaftar menyebutnya "${jenis}" atas nama "${nama}".
+Dokumen yang diterima: KTP, KK (Kartu Keluarga), KIA (Kartu Identitas Anak), Kartu Pelajar, Suket (surat keterangan domisili dari RT/RW/desa/kelurahan), SIM, atau dokumen identitas lain yang memuat nama dan alamat.
 Baca isinya PERSIS seperti tertulis, jangan menebak. Kosongkan isian yang tidak tertulis atau tidak terbaca.
-- jenis_dokumen: KTP, KK (Kartu Keluarga), Suket (surat keterangan domisili dari RT/RW/desa/kelurahan), Kartu Pelajar, lain, atau tidak_terbaca.
-- terbaca: false bila foto buram, terpotong sampai data utama hilang, atau bukan dokumen identitas.
+- jenis_dokumen: KTP, KK, KIA, Kartu Pelajar, Suket, SIM, lain (identitas lain), bukan_identitas (bukan dokumen identitas sama sekali), atau tidak_terbaca.
+- terbaca: false bila foto buram atau terpotong sampai nama dan alamat tidak terbaca.
 - nama: nama orang pada dokumen. Untuk KK: nama anggota keluarga yang paling mirip dengan "${nama}" (kosong bila tidak ada yang mirip).
 - nik: 16 digit NIK orang itu, tanpa spasi.
 - tanggal_lahir: tanggal lahir orang itu, format YYYY-MM-DD.
-- desa_kelurahan, kecamatan, kabupaten_kota, provinsi: alamat pada dokumen. Tulis kabupaten_kota lengkap dengan kata KABUPATEN atau KOTA bila tertulis.
+- alamat_dari: "pemilik" bila dokumen memuat alamat tempat tinggal orang itu; "sekolah" bila hanya ada alamat sekolah (kartu pelajar); "tidak_ada" bila tidak ada alamat sama sekali.
+- desa_kelurahan, kecamatan, kabupaten_kota, provinsi: dari alamat itu. Di KTP provinsi tertulis di baris paling atas ("PROVINSI ...") dan kabupaten/kota di baris kedua. Tulis kabupaten_kota lengkap dengan kata KABUPATEN atau KOTA bila tertulis.
 - sekolah: nama sekolah (untuk kartu pelajar).`,
     format: obj({
-      jenis_dokumen: { type: "string", enum: ["KTP", "KK", "Suket", "Kartu Pelajar", "lain", "tidak_terbaca"] },
-      terbaca: B, nama: S, nik: S, tanggal_lahir: S, desa_kelurahan: S, kecamatan: S, kabupaten_kota: S, provinsi: S, sekolah: S,
+      jenis_dokumen: { type: "string", enum: JENIS_DOK }, terbaca: B, nama: S, nik: S, tanggal_lahir: S,
+      alamat_dari: { type: "string", enum: ["pemilik", "sekolah", "tidak_ada"] },
+      desa_kelurahan: S, kecamatan: S, kabupaten_kota: S, provinsi: S, sekolah: S,
     }),
   };
 }
@@ -70,9 +78,8 @@ export function tanyaIzin(nama) {
 
 export function tanyaNamaTim(namaTim) {
   return {
-    prompt: `Nama tim turnamen esports desa: "${namaTim}".
-Aturan: nama tim harus bebas dari unsur SARA, pornografi, dan politik praktis.
-- pantas: false HANYA bila nama itu jelas mengandung SARA, kata kasar/pornografi, atau politik praktis (nama partai, calon, slogan kampanye). Nama desa, kata "esports", "squad", "team", nama hewan, dan sejenisnya pantas.
+    prompt: `Nama tim turnamen esports desa: "${namaTim}". Nama tim bebas, asal tidak mengandung SARA, pornografi, atau politik praktis.
+- pantas: false HANYA bila nama itu jelas mengandung SARA, kata kasar/pornografi, atau politik praktis (nama partai, calon, slogan kampanye). Nama desa, kata "esports", "squad", "team", nama hewan, plesetan, dan sejenisnya pantas.
 - alasan: satu kalimat singkat, kosong bila pantas.`,
     format: obj({ pantas: B, alasan: S }),
   };
@@ -82,6 +89,7 @@ Aturan: nama tim harus bebas dari unsur SARA, pornografi, dan politik praktis.
 
 export const huruf = (s) => String(s ?? "").toUpperCase().normalize("NFKD").replace(/[̀-ͯ]/g, "")
   .replace(/[^A-Z0-9 ]+/g, " ").replace(/\s+/g, " ").trim();
+const rapat = (s) => huruf(s).replace(/\s/g, "");
 
 function jarak(a, b) { // Levenshtein
   if (a === b) return 0;
@@ -120,16 +128,56 @@ export function namaCocok(didaftar, diDokumen) {
   return true;
 }
 
-const AWALAN_WILAYAH = /^(KABUPATEN|KAB|KOTA ADMINISTRASI|KOTA ADM|KOTA|KECAMATAN|KEC|DESA|DS|KELURAHAN|KEL|KAMPUNG|KAMPONG|GAMPONG|NAGARI|PEKON|LEMBANG|KALURAHAN)\b\s*/;
+/* ── Wilayah: provinsi domisili dari alamat di dokumen ────────────────── */
+
+const AWALAN_WILAYAH = /^(KABUPATEN|KAB|KOTA ADMINISTRASI|KOTA ADM|KOTA|ADMINISTRASI|ADM)\b\s*/;
 const intiWilayah = (s) => { let x = huruf(s); for (let i = 0; i < 2; i++) x = x.replace(AWALAN_WILAYAH, ""); return x.replace(/\s/g, ""); };
 const jenisKab = (s) => { const x = huruf(s); return /^KOTA\b/.test(x) ? "KOTA" : /^KAB(UPATEN)?\b/.test(x) ? "KAB" : ""; };
+const KAB = KABKOTA.map(([kode, nama]) => ({ kode, prov: kode.slice(0, 2), nama, jenis: jenisKab(nama), inti: intiWilayah(nama) }));
+export const namaKab = (kode) => KAB.find((k) => k.kode === kode)?.nama || kode;
 
-/** null = tidak tertulis di dokumen; true/false = sama/beda. "Kota X" ≠ "Kabupaten X". */
-export function wilayahSama(diDokumen, milikTim, tingkat) {
-  const a = intiWilayah(diDokumen), b = intiWilayah(milikTim);
-  if (!a) return null;
-  if (tingkat === "kab") { const ja = jenisKab(diDokumen), jb = jenisKab(milikTim); if (ja && jb && ja !== jb) return false; }
-  return a === b || mirip(a, b) || (a.length >= 5 && b.length >= 5 && (a.includes(b) || b.includes(a)));
+/** Kabupaten/kota yang cocok dengan tulisan di dokumen. Tanpa awalan, "MALANG" = Kab. Malang & Kota Malang. */
+export function cariKabKota(teks) {
+  const j = jenisKab(teks), inti = intiWilayah(teks);
+  if (!inti) return [];
+  const saring = (f) => KAB.filter((k) => (!j || k.jenis === j) && f(k.inti));
+  const persis = saring((x) => x === inti);
+  return persis.length ? persis : saring((x) => mirip(x, inti));
+}
+
+// Singkatan & nama lama provinsi yang lazim tertulis di dokumen (dibandingkan tanpa spasi).
+const ALIAS_PROV = Object.fromEntries(Object.entries({
+  11: ["NAD", "NANGGROE ACEH DARUSSALAM", "DAERAH ISTIMEWA ACEH", "DI ACEH"], 12: ["SUMUT"], 13: ["SUMBAR"], 16: ["SUMSEL"],
+  19: ["BABEL", "BANGKA BELITUNG", "KEP BANGKA BELITUNG"], 21: ["KEPRI", "KEP RIAU"],
+  31: ["DKI", "DKI JAKARTA", "JAKARTA", "DAERAH KHUSUS JAKARTA"], 32: ["JABAR"], 33: ["JATENG"], 35: ["JATIM"],
+  34: ["DIY", "DI YOGYAKARTA", "YOGYAKARTA", "JOGJAKARTA", "DI JOGJAKARTA", "DAERAH ISTIMEWA JOGJAKARTA"],
+  52: ["NTB"], 53: ["NTT"], 61: ["KALBAR"], 62: ["KALTENG"], 63: ["KALSEL"], 64: ["KALTIM"], 65: ["KALTARA"],
+  71: ["SULUT"], 72: ["SULTENG"], 73: ["SULSEL"], 74: ["SULTRA"], 76: ["SULBAR"], 82: ["MALUT"], 91: ["IRIAN JAYA"], 92: ["IRIAN JAYA BARAT"],
+}).flatMap(([k, a]) => a.map((x) => [rapat(x), String(k)])));
+
+/** Kode provinsi dari tulisan di dokumen ("PROVINSI JAWA TIMUR", "D.I. YOGYAKARTA", "NTB"); null bila tak dikenali. */
+export function kodeProvinsi(teks) {
+  const x = rapat(huruf(teks).replace(/^(PROVINSI|PROPINSI|PROV)\b\s*/, ""));
+  if (!x) return null;
+  if (ALIAS_PROV[x]) return ALIAS_PROV[x];
+  const persis = Object.entries(PROVINSI).find(([, n]) => rapat(n) === x);
+  if (persis) return persis[0];
+  const dekat = Object.entries(PROVINSI).filter(([, n]) => mirip(rapat(n), x));
+  return dekat.length === 1 ? dekat[0][0] : null;
+}
+
+/**
+ * Provinsi domisili pemain. Kabupaten/kota didahulukan karena memberi provinsi TERKINI (KTP lama dari daerah
+ * pemekaran, mis. Merauke, masih bertulis "PAPUA" padahal kini Papua Selatan); provinsi tertulis dipakai bila
+ * kabupaten/kota tidak terbaca atau ambigu.
+ * → { prov: kode|null, kab: kode|null (null bila tak pasti), pemekaran: provinsi tertulis ≠ provinsi kabupatennya }
+ */
+export function domisili(id) {
+  const kab = cariKabKota(id?.kabupaten_kota), tulis = kodeProvinsi(id?.provinsi);
+  const dariKab = [...new Set(kab.map((k) => k.prov))];
+  const prov = dariKab.length === 1 ? dariKab[0] : dariKab.includes(tulis) || !dariKab.length ? tulis : null;
+  const kabPas = kab.filter((k) => k.prov === prov);
+  return { prov, kab: kabPas.length === 1 ? kabPas[0].kode : null, pemekaran: !!(tulis && prov && tulis !== prov && dariKab.length === 1) };
 }
 
 /* ── Tanggal & umur ───────────────────────────────────────────────────── */
@@ -167,13 +215,14 @@ export const samarkanNik = (nik) => { const n = nikBersih(nik); return n.length 
 /* ── Penilaian satu tim ───────────────────────────────────────────────── */
 
 /**
- * @param tim     paket tim (tednas_ai_antre): nama_tim, desa, kecamatan, kabupaten, pemain[]
+ * @param tim     paket tim (tednas_ai_antre): nama_tim, prov_kode, provinsi, kab_kode, kabupaten, desa, pemain[]
  * @param baca    { [urutan]: { identitas, profil_ml, follow_esports_path, follow_ppdt_path, izin } } hasil bacaan AI;
  *                tiap entri bisa { galat: "…" } (berkas tak ada / tak terbaca) atau undefined (tak diunggah)
  * @param namaTim hasil tanyaNamaTim (boleh null)
  * @param sha     { [urutan]: { kolom: sha } } untuk berkas sama dipakai dua kali oleh satu pemain
  * → { hasil: "lolos"|"cek", ringkas, rincian, identitas }
  * Butir: s = "cek" (perlu dilihat admin) | "info" (dicatat saja) | "ok".
+ * Pemain yang sama di dua tim (NIK/ID ML/berkas sama) dinilai database (tednas_ai_ganda_hitung), bukan di sini.
  */
 export function nilaiTim(tim, baca, namaTim, sha = {}) {
   const pemain = [], timButir = [], identitas = [];
@@ -189,19 +238,18 @@ export function nilaiTim(tim, baca, namaTim, sha = {}) {
     let umur = null;
     if (!id) cek("identitas", "Berkas identitas tidak ada.");
     else if (id.galat) cek("identitas", id.galat);
-    else if (!id.terbaca || id.jenis_dokumen === "tidak_terbaca" || id.jenis_dokumen === "lain") {
-      cek("identitas", id.jenis_dokumen === "lain" ? "Berkas identitas bukan KTP/KK/surat keterangan/kartu pelajar." : "Foto identitas tidak terbaca (buram atau terpotong).");
-    } else {
-      data.dok = id.jenis_dokumen;
-      const sebut = { KTP: "KTP", KK: "KK", "Suket RT/RW": "Suket", "Kartu Pelajar": "Kartu Pelajar" }[p.dokumen_jenis];
-      if (sebut && sebut !== id.jenis_dokumen) info("identitas", `Diunggah ${id.jenis_dokumen}, didaftarkan sebagai ${p.dokumen_jenis}.`);
+    else if (id.jenis_dokumen === "bukan_identitas") cek("identitas", "Berkas identitas bukan dokumen identitas (KTP/KK/KIA/kartu pelajar/surat keterangan/SIM).");
+    else if (!id.terbaca || id.jenis_dokumen === "tidak_terbaca") cek("identitas", "Foto identitas tidak terbaca (buram atau terpotong).");
+    else {
+      const dok = id.jenis_dokumen === "lain" ? "Identitas lain" : id.jenis_dokumen;
+      data.dok = dok;
       data.nama = id.nama || "";
       if (!id.nama) cek("identitas", id.jenis_dokumen === "KK" ? `Nama "${p.nama}" tidak ditemukan di KK.` : "Nama di dokumen tidak terbaca.");
       else if (!namaCocok(p.nama, id.nama)) cek("identitas", `Nama di dokumen "${id.nama}" tidak sama dengan nama terdaftar "${p.nama}".`);
 
       const nik = nikBersih(id.nik);
       if (nik.length === 16) { data.nik = samarkanNik(nik); data._nik = nik; }
-      else if (nik && id.jenis_dokumen !== "Kartu Pelajar") info("identitas", "NIK terbaca tidak 16 digit.");
+      else if (nik && ["KTP", "KK", "KIA"].includes(id.jenis_dokumen)) info("identitas", "NIK terbaca tidak 16 digit.");
 
       const lahir = tanggalSah(id.tanggal_lahir), dariNik = lahirDariNik(nik);
       const pakai = lahir || dariNik;
@@ -213,13 +261,22 @@ export function nilaiTim(tim, baca, namaTim, sha = {}) {
         if (umur < UMUR_MIN || umur > UMUR_MAKS) cek("identitas", `Umur ${umur} tahun per 15 Jan 2027 (syarat 15–30).`);
       }
 
-      // Domisili (Peraturan A & B: berdomisili di desa; tim boleh gabungan beberapa desa)
-      const kab = wilayahSama(id.kabupaten_kota, tim.kabupaten, "kab"), kec = wilayahSama(id.kecamatan, tim.kecamatan), desa = wilayahSama(id.desa_kelurahan, tim.desa);
-      data.alamat = [id.desa_kelurahan, id.kecamatan, id.kabupaten_kota].filter(Boolean).join(", ");
-      if (kab === false) cek("identitas", `Domisili di ${id.kabupaten_kota}, bukan ${tim.kabupaten}.`);
-      else if (kab === null && desa === null) info("identitas", id.jenis_dokumen === "Kartu Pelajar" ? "Kartu pelajar tanpa alamat rumah: domisili tidak bisa dicek AI." : "Alamat tidak terbaca: domisili tidak bisa dicek AI.");
-      else if (desa === false) info("identitas", `Pemain dari desa ${id.desa_kelurahan}${kec === false ? `, Kec. ${id.kecamatan}` : ""} (tim gabungan desa diperbolehkan).`);
-      if (!butir.some((x) => x.b === "identitas" && x.s === "cek")) ok("identitas", `${id.jenis_dokumen} sesuai${umur !== null ? `, umur ${umur}` : ""}.`);
+      // Domisili: pemain satu tim harus satu provinsi dengan tim (user 16 Nov); kabupaten/desa boleh berbeda.
+      const dom = domisili(id);
+      data.alamat = [id.desa_kelurahan, id.kecamatan, id.kabupaten_kota, id.provinsi].filter(Boolean).join(", ");
+      if (dom.prov) data.prov = PROVINSI[dom.prov];
+      if (!dom.prov) {
+        cek("identitas", id.alamat_dari === "tidak_ada" || (!id.kabupaten_kota && !id.provinsi)
+          ? `${dok} tanpa alamat yang terbaca: provinsi domisili perlu dicek manual.`
+          : `Provinsi domisili tidak bisa dipastikan dari alamat "${data.alamat}".`);
+      } else if (dom.prov !== tim.prov_kode) {
+        cek("identitas", `Domisili di ${PROVINSI[dom.prov]}, sedangkan tim mewakili ${tim.provinsi}. Pemain satu tim harus satu provinsi.`);
+      } else {
+        if (dom.kab && tim.kab_kode && dom.kab !== tim.kab_kode) info("identitas", `Domisili di ${namaKab(dom.kab)}, tim di ${tim.kabupaten} (masih satu provinsi).`);
+        if (id.alamat_dari === "sekolah") info("identitas", "Domisili dibaca dari alamat sekolah di kartu pelajar.");
+        if (dom.pemekaran) info("identitas", `Dokumen menulis provinsi "${id.provinsi}"; ${id.kabupaten_kota} kini masuk ${PROVINSI[dom.prov]}.`);
+      }
+      if (!butir.some((x) => x.b === "identitas" && x.s === "cek")) ok("identitas", `${dok} sesuai${umur !== null ? `, umur ${umur}` : ""}${dom.prov ? `, ${PROVINSI[dom.prov]}` : ""}.`);
     }
 
     // 2. Izin orang tua bila di bawah 17 tahun
@@ -267,8 +324,8 @@ export function nilaiTim(tim, baca, namaTim, sha = {}) {
     identitas.push({ u: p.urutan, nik: data._nik || "", ml: data._ml || "", sha: [...new Set(Object.values(s).filter(Boolean))] });
   }
 
-  // Tim
-  if (namaTim && namaTim.pantas === false) timButir.push({ b: "nama_tim", s: "cek", t: `Nama tim mungkin melanggar aturan SARA/pornografi/politik: ${namaTim.alasan || "-"}` });
+  // Tim: nama bebas, hanya dicek kepantasannya (SARA/pornografi/politik praktis).
+  if (namaTim && namaTim.pantas === false) timButir.push({ b: "nama_tim", s: "cek", t: `Nama tim mungkin mengandung SARA/pornografi/politik praktis: ${namaTim.alasan || "-"}` });
 
   const catatan = [...timButir.filter((x) => x.s === "cek").map((x) => x.t),
     ...pemain.flatMap((p) => p.butir.filter((x) => x.s === "cek").map((x) => `P${p.u} ${p.nama}: ${x.t}`))];

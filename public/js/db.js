@@ -105,17 +105,6 @@
         return { baris: r.data || [], total: r.count || 0 };
       },
       async statistikAi() { return this.aiAda ? cek(await sb.rpc('tednas_ai_statistik')) : null; },
-      async idLolosAi(o) {
-        const semua = [];
-        for (let dari = 0; ; dari += 1000) {
-          let q = sb.from('tednas_tim').select('id,ai:tednas_ai!inner(akhir)').eq('status', 'menunggu').eq('ai.akhir', 'lolos');
-          if (o && o.prov) q = q.eq('prov_kode', o.prov);
-          const b = cek(await q.order('created_at').range(dari, dari + 999));
-          semua.push(...b.map((x) => x.id)); if (b.length < 1000) break;
-        }
-        return semua;
-      },
-      async verifikasiLolos(ids) { return cek(await sb.rpc('tednas_ai_verifikasi_lolos', { p_ids: ids })); },
       async periksaUlangAi(timId) { cek(await sb.from('tednas_ai').delete().eq('tim_id', timId)); },
       async hapusTim(t) {
         cek(await sb.from('tednas_tim').delete().eq('id', t.id));
@@ -226,8 +215,6 @@
       async timAdmin(o) { const a = saring(o); return { baris: a.slice(o.dari, o.dari + o.jumlah), total: a.length }; },
       aiAda: false,
       async statistikAi() { return null; },
-      async idLolosAi() { return []; },
-      async verifikasiLolos() { return { diverifikasi: 0 }; },
       async periksaUlangAi() {},
       async hapusTim(t) {
         tulis('tim', tim().filter((x) => x.id !== t.id));
