@@ -25,7 +25,7 @@ Pasang, uji, dan perawatan: [deploy/drive/PASANG.md](deploy/drive/PASANG.md). Mi
 
 Agen AI di server dapur membaca berkas tiap tim begitu tim mendaftar. Model gabungan: qwen3.5:9b di armada worker
 membaca semua berkas, lalu berkas yang ditolaknya dibaca ulang Qwen3.6-35B di pool GPU.
-Yang dibaca: identitas, umur, domisili satu provinsi, surat izin, profil Mobile Legends, bukti follow, dan pemain
+Yang dibaca: identitas, umur, domisili satu kabupaten/kota, surat izin, profil Mobile Legends, bukti follow, dan pemain
 yang terdaftar di dua tim.
 - Lolos semua pemeriksaan: status langsung **Terverifikasi**.
 - Ada catatan: tim tetap Menunggu, dan catatannya tampil di kolom **Cek AI** halaman admin.

@@ -125,7 +125,7 @@ await uji("nilaiTim: tiap pelanggaran jadi catatan 'cek' yang terbaca admin", ()
     ...n.rincian.pemain.flatMap((p) => p.butir.filter((b) => b.s === "cek").map((b) => `P${p.u} ${p.nama}: ${b.t}`))].join(" · ");
   for (const pola of [/P1 Budi Santoso: Umur 15 tahun: surat izin/, /P2 Siti Aminah: .*@ditjen_ppdt BELUM diikuti/,
     /P4 Dewi Lestari: Nama di dokumen "AGUS SALIMUDIN WIJAYA KUSUMA" tidak sama dengan nama terdaftar "Dewi Lestari"/,
-    /P3 Rizky Ramadhan: Domisili di Daerah Istimewa Yogyakarta, sedangkan tim mewakili Jawa Timur\. Pemain satu tim harus satu provinsi/, /P5 Agus Salim: Umur 37/, /P5 Agus Salim: Bukan tangkapan layar profil/,
+    /P3 Rizky Ramadhan: Domisili di Kabupaten Sleman, Daerah Istimewa Yogyakarta, sedangkan tim mewakili Kabupaten Malang, Jawa Timur\. Pemain satu tim harus satu kabupaten\/kota/, /P5 Agus Salim: Umur 37/, /P5 Agus Salim: Bukan tangkapan layar profil/,
     /P3 Rizky Ramadhan: Berkas yang sama persis diunggah untuk profil ML dan follow @esportsdesa.official/]) {
     assert.match(semua, pola);
   }
@@ -146,7 +146,7 @@ await uji("nilaiTim: izin diperiksa bila < 17; berkas lama = cek; kartu pelajar 
   const p = (u) => n.rincian.pemain.find((x) => x.u === u).butir;
   assert.ok(p(1).some((b) => b.b === "izin" && b.s === "ok"), "izin ok");
   assert.ok(p(2).some((b) => b.s === "cek" && /penyimpanan lama/.test(b.t)));
-  assert.ok(p(3).some((b) => b.s === "cek" && /Kartu Pelajar tanpa alamat yang terbaca: provinsi domisili perlu dicek manual/.test(b.t)), JSON.stringify(p(3)));
+  assert.ok(p(3).some((b) => b.s === "cek" && /Kartu Pelajar tanpa alamat yang terbaca: kabupaten\/kota domisili perlu dicek manual/.test(b.t)), JSON.stringify(p(3)));
   assert.equal(n.hasil, "cek");
   baca[1].izin.ada_tanda_tangan = false;
   assert.ok(N.nilaiTim(t, baca, null, {}).rincian.pemain[0].butir.some((b) => b.b === "izin" && /tanpa tanda tangan/.test(b.t)));
@@ -178,23 +178,29 @@ await uji("bukti follow: tombol utama profil yang menentukan, bukan kartu 'Disar
   assert.equal(N.nilaiTim(TIM, baca, null, {}).hasil, "lolos");
 });
 
-await uji("nilaiTim: identitas apa pun yang memuat alamat; satu provinsi cukup, beda kabupaten = info", () => {
+await uji("nilaiTim: identitas apa pun yang memuat alamat; domisili harus satu kabupaten/kota dengan tim (v6)", () => {
   const baca = Object.fromEntries(TIM.pemain.map((p, i) => [p.urutan, bacaBaik(p, i)]));
-  Object.assign(baca[1].identitas, { kabupaten_kota: "KOTA MALANG", desa_kelurahan: "LOWOKWARU" });               // kota, satu provinsi
-  Object.assign(baca[2].identitas, { jenis_dokumen: "KIA", kabupaten_kota: "KABUPATEN PASURUAN" });               // KIA, kab lain
-  Object.assign(baca[3].identitas, { jenis_dokumen: "Kartu Pelajar", alamat_dari: "sekolah", nik: "", kabupaten_kota: "KAB. BLITAR", provinsi: "" });
-  Object.assign(baca[4].identitas, { jenis_dokumen: "lain", kabupaten_kota: "", provinsi: "JATIM" });               // identitas lain, provinsi saja
+  Object.assign(baca[2].identitas, { jenis_dokumen: "KIA", desa_kelurahan: "SUMBERPASIR" });                           // KIA, desa lain sekabupaten
+  Object.assign(baca[3].identitas, { jenis_dokumen: "Kartu Pelajar", alamat_dari: "sekolah", nik: "", kabupaten_kota: "KAB. MALANG", provinsi: "" });
+  Object.assign(baca[4].identitas, { jenis_dokumen: "lain", kabupaten_kota: "KABUPATEN MALANG", provinsi: "JATIM" });  // identitas lain
   const n = N.nilaiTim(TIM, baca, { pantas: true, alasan: "" }, {});
   assert.equal(n.hasil, "lolos", n.ringkas);
   const p = (u) => n.rincian.pemain.find((x) => x.u === u);
-  assert.ok(p(1).butir.some((b) => b.s === "info" && /Domisili di Kota Malang, tim di Kabupaten Malang \(masih satu provinsi\)/.test(b.t)));
-  assert.ok(p(2).butir.some((b) => b.s === "ok" && /^KIA sesuai/.test(b.t)));
+  assert.ok(p(2).butir.some((b) => b.s === "ok" && /^KIA sesuai, umur \d+, Kabupaten Malang/.test(b.t)), JSON.stringify(p(2)));
   assert.ok(p(3).butir.some((b) => b.s === "info" && /alamat sekolah/.test(b.t)));
-  assert.equal(p(4).data.dok, "Identitas lain"); assert.equal(p(4).data.prov, "Jawa Timur");
+  assert.equal(p(4).data.dok, "Identitas lain"); assert.equal(p(4).data.prov, "Jawa Timur"); assert.equal(p(4).data.kab, "Kabupaten Malang");
   const b2 = salin(baca); b2[5].identitas.jenis_dokumen = "bukan_identitas";
   assert.match(N.nilaiTim(TIM, b2, null, {}).ringkas, /P5 Agus Salim: Berkas identitas bukan dokumen identitas/);
   const b3 = salin(baca); b3[5].identitas.provinsi = "JAWA TENGAH"; b3[5].identitas.kabupaten_kota = "KAB. SEMARANG";
-  assert.match(N.nilaiTim(TIM, b3, null, {}).ringkas, /P5 Agus Salim: Domisili di Jawa Tengah, sedangkan tim mewakili Jawa Timur/);
+  assert.match(N.nilaiTim(TIM, b3, null, {}).ringkas, /P5 Agus Salim: Domisili di Kabupaten Semarang, Jawa Tengah, sedangkan tim mewakili Kabupaten Malang, Jawa Timur\. Pemain satu tim harus satu kabupaten\/kota/);
+  // Satu provinsi tapi beda kabupaten/kota = cek (dulu hanya info).
+  const b4 = salin(baca); b4[1].identitas.kabupaten_kota = "KOTA MALANG";
+  assert.match(N.nilaiTim(TIM, b4, null, {}).ringkas, /P1 [^:]+: Domisili di Kota Malang, sedangkan tim mewakili Kabupaten Malang\. Pemain satu tim harus satu kabupaten\/kota/);
+  // Kabupaten/kota ambigu atau tak tertulis (provinsi saja) = cek manual.
+  const b5 = salin(baca); b5[1].identitas.kabupaten_kota = "MALANG";
+  assert.match(N.nilaiTim(TIM, b5, null, {}).ringkas, /Kabupaten\/kota domisili tidak bisa dipastikan dari alamat/);
+  const b6 = salin(baca); Object.assign(b6[1].identitas, { kabupaten_kota: "", provinsi: "JATIM" });
+  assert.match(N.nilaiTim(TIM, b6, null, {}).ringkas, /Kabupaten\/kota domisili tidak bisa dipastikan/);
   assert.equal(N.nilaiTim({ ...TIM, nama_tim: "Garuda Squad" }, baca, { pantas: true, alasan: "" }, {}).hasil, "lolos", "nama tim bebas");
   assert.match(N.nilaiTim(TIM, baca, { pantas: false, alasan: "kata kasar" }, {}).ringkas, /Nama tim mungkin mengandung SARA/);
 });

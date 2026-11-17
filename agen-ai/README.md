@@ -10,21 +10,22 @@ Agen ini memeriksa berkas setiap tim pendaftar secara otomatis, begitu tim menda
 
 ## Yang diperiksa
 
-Dasarnya halaman Peraturan (`public/js/common.js`, `U.PERATURAN`) dan arahan panitia 16 Nov 2026.
+Dasarnya halaman Peraturan (`public/js/common.js`, `U.PERATURAN`) dan arahan panitia 16–17 Nov 2026.
 
 | Berkas | AI membaca | Aturan |
 |---|---|---|
-| Identitas: KTP, KK, KIA, kartu pelajar, surat keterangan domisili, SIM, atau identitas lain yang memuat alamat | jenis, nama, NIK, tanggal lahir, alamat | nama sama dengan yang didaftarkan; umur 15–30 per 15 Jan 2027; domisili **satu provinsi** dengan tim. Kabupaten atau desa lain boleh, dicatat sebagai info. |
+| Identitas: KTP, KK, KIA, kartu pelajar, surat keterangan domisili, SIM, atau identitas lain yang memuat alamat | jenis, nama, NIK, tanggal lahir, alamat | nama sama dengan yang didaftarkan; umur 15–30 per 15 Jan 2027; domisili **satu kabupaten/kota** dengan tim (arahan 17 Nov; sebelumnya satu provinsi). Desa lain boleh. |
 | Surat izin orang tua | surat izin? nama anak, tanda tangan | wajib bila umur < 17; dibaca hanya untuk pemain < 17 |
 | Profil Mobile Legends | profil ML? nickname, ID, server | harus profil ML dengan ID terlihat |
 | Bukti follow @esportsdesa.official dan @ditjen_ppdt | Instagram? akun terlihat? status follow | harus "Mengikuti"/"Following" untuk akun yang benar |
 | Nama tim | pantas? (SARA/pornografi/politik) | nama bebas, hanya ditandai bila jelas tidak pantas |
 | Lintas tim | — | 1 orang hanya boleh di 1 tim. NIK, ID ML, atau berkas yang sama persis dipakai dua pemain → tim yang **mendaftar belakangan** "Perlu dicek"; tim yang lebih dulu hanya mendapat catatan. Dua kali di tim yang sama → tim itu "Perlu dicek". |
 
-- **Provinsi domisili** diambil dari kabupaten/kota di dokumen (`wilayah.mjs`, 514 kabupaten/kota). Dengan begitu
-  KTP lama dari daerah pemekaran tetap terbaca benar, misalnya Merauke yang tertulis "PAPUA" padahal kini Papua
-  Selatan. Bila kabupaten/kota tidak terbaca atau ambigu ("Banjar"), dipakai provinsi yang tertulis.
-- **Kartu pelajar tanpa alamat** jadi catatan "perlu dicek", karena provinsinya tidak bisa dipastikan.
+- **Kabupaten/kota domisili** dicocokkan dengan daftar 514 kabupaten/kota (`wilayah.mjs`), lalu dibandingkan dengan
+  kabupaten/kota tim. Provinsinya ikut dari kabupaten/kota itu, jadi KTP lama dari daerah pemekaran tetap terbaca benar
+  (Merauke yang tertulis "PAPUA" kini Papua Selatan). Nama yang ambigu ("Malang" tanpa Kab./Kota, "Banjar") dipilih
+  menurut provinsi yang tertulis; bila tetap tidak pasti, jadi catatan "perlu dicek".
+- **Kartu pelajar tanpa alamat** jadi catatan "perlu dicek", karena kabupaten/kotanya tidak bisa dipastikan.
 - AI hanya **membaca** isi gambar. Keputusan sesuai atau tidak sesuai diambil kode di `nilai.mjs`, jadi aturannya
   bisa dibaca dan diuji (`node uji/uji-ai.mjs`). Aturan status otomatis ada di `supabase/migration-10-ai-periksa.sql`
   (`tednas_ai_terapkan`), diuji `node uji/uji-sql.mjs`.

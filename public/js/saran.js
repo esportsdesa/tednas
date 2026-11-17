@@ -30,12 +30,12 @@
       }
       if (/^Nama di dokumen tidak terbaca/.test(t)) return { kolom: 'dok', teks: 'Nama di kartu identitas tidak terbaca. Foto ulang dengan jelas.' };
       if ((m = /^Domisili di (.+), sedangkan tim mewakili (.+)\. Pemain satu tim/.exec(t))) {
-        return { kolom: 'dok', teks: `Domisili pemain ini di ${m[1]}, padahal tim mewakili ${m[2]}. Semua pemain harus satu provinsi dengan desa yang diwakili: ganti dengan pemain lain, atau unggah identitas yang menunjukkan domisili di ${m[2]}.` };
+        return { kolom: 'dok', teks: `Domisili pemain ini di ${m[1]}, padahal tim mewakili ${m[2]}. Semua pemain harus satu kabupaten/kota dengan desa yang diwakili: ganti dengan pemain lain, atau unggah identitas yang menunjukkan domisili di ${m[2]}.` };
       }
       if (/tanpa alamat yang terbaca/.test(t)) {
-        return { kolom: 'dok', teks: 'Kartu identitasnya tidak memuat alamat, jadi provinsi domisilinya tidak bisa dipastikan. Unggah KTP, KK, atau surat keterangan domisili.' };
+        return { kolom: 'dok', teks: 'Kartu identitasnya tidak memuat alamat, jadi kabupaten/kota domisilinya tidak bisa dipastikan. Unggah KTP, KK, atau surat keterangan domisili.' };
       }
-      if (/^Provinsi domisili tidak bisa dipastikan/.test(t)) {
+      if (/^(Provinsi|Kabupaten\/kota) domisili tidak bisa dipastikan/.test(t)) {
         return { kolom: 'dok', teks: 'Alamat di kartu identitas kurang jelas. Unggah foto yang alamatnya terbaca, atau KK/surat keterangan domisili.' };
       }
       if (/^Tanggal lahir tidak terbaca/.test(t)) {

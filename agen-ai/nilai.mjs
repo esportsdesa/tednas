@@ -17,7 +17,9 @@ import { PROVINSI, KABKOTA } from "./wilayah.mjs";
 // tim dianggap cukup (user: "cukup"); screenshot yang sama di tim LAIN tetap ganda.
 // v5 (16 Nov malam, user "setuju pake gabungan"): mode gabungan di agen.mjs (9b armada dulu, 35B pool untuk berkas
 // yang ditolak 9b). Aturan penilaian sama dengan v4.
-export const VERSI_AGEN = 5;
+// v6 (17 Nov, user "bukan satu provinsi tapi satu kabupaten"): domisili kembali SATU KABUPATEN/KOTA dengan tim;
+// kabupaten/kota yang tak terbaca atau ambigu = cek manual.
+export const VERSI_AGEN = 6;
 export const TANGGAL_ACUAN = "2027-01-15"; // Peraturan A: "Berusia 15–30 tahun per 15 Januari 2027"
 export const UMUR_MIN = 15, UMUR_MAKS = 30, UMUR_IZIN = 17;
 export const AKUN_IG = { follow_esports_path: "esportsdesa.official", follow_ppdt_path: "ditjen_ppdt" };
@@ -298,22 +300,28 @@ export function nilaiTim(tim, baca, namaTim, sha = {}) {
         if (umur < UMUR_MIN || umur > UMUR_MAKS) cek("identitas", `Umur ${umur} tahun per 15 Jan 2027 (syarat 15–30).`);
       }
 
-      // Domisili: pemain satu tim harus satu provinsi dengan tim (user 16 Nov); kabupaten/desa boleh berbeda.
+      // Domisili: pemain satu tim harus satu KABUPATEN/KOTA dengan tim (user 17 Nov; 16 Nov masih satu provinsi).
+      // Desa boleh berbeda. Kabupaten/kota yang tidak terbaca atau ambigu ("Malang" tanpa Kab./Kota) = cek manual.
       const dom = domisili(id);
       data.alamat = [id.desa_kelurahan, id.kecamatan, id.kabupaten_kota, id.provinsi].filter(Boolean).join(", ");
       if (dom.prov) data.prov = PROVINSI[dom.prov];
+      if (dom.kab) data.kab = namaKab(dom.kab);
+      const syarat = "Pemain satu tim harus satu kabupaten/kota.";
       if (!dom.prov) {
         cek("identitas", id.alamat_dari === "tidak_ada" || (!id.kabupaten_kota && !id.provinsi)
-          ? `${dok} tanpa alamat yang terbaca: provinsi domisili perlu dicek manual.`
-          : `Provinsi domisili tidak bisa dipastikan dari alamat "${data.alamat}".`);
+          ? `${dok} tanpa alamat yang terbaca: kabupaten/kota domisili perlu dicek manual.`
+          : `Kabupaten/kota domisili tidak bisa dipastikan dari alamat "${data.alamat}".`);
       } else if (dom.prov !== tim.prov_kode) {
-        cek("identitas", `Domisili di ${PROVINSI[dom.prov]}, sedangkan tim mewakili ${tim.provinsi}. Pemain satu tim harus satu provinsi.`);
+        cek("identitas", `Domisili di ${dom.kab ? `${namaKab(dom.kab)}, ` : ""}${PROVINSI[dom.prov]}, sedangkan tim mewakili ${tim.kabupaten}, ${tim.provinsi}. ${syarat}`);
+      } else if (!dom.kab) {
+        cek("identitas", `Kabupaten/kota domisili tidak bisa dipastikan dari alamat "${data.alamat}".`);
+      } else if (tim.kab_kode && dom.kab !== tim.kab_kode) {
+        cek("identitas", `Domisili di ${namaKab(dom.kab)}, sedangkan tim mewakili ${tim.kabupaten}. ${syarat}`);
       } else {
-        if (dom.kab && tim.kab_kode && dom.kab !== tim.kab_kode) info("identitas", `Domisili di ${namaKab(dom.kab)}, tim di ${tim.kabupaten} (masih satu provinsi).`);
         if (id.alamat_dari === "sekolah") info("identitas", "Domisili dibaca dari alamat sekolah di kartu pelajar.");
         if (dom.pemekaran) info("identitas", `Dokumen menulis provinsi "${id.provinsi}"; ${id.kabupaten_kota} kini masuk ${PROVINSI[dom.prov]}.`);
       }
-      if (!butir.some((x) => x.b === "identitas" && x.s === "cek")) ok("identitas", `${dok} sesuai${umur !== null ? `, umur ${umur}` : ""}${dom.prov ? `, ${PROVINSI[dom.prov]}` : ""}.`);
+      if (!butir.some((x) => x.b === "identitas" && x.s === "cek")) ok("identitas", `${dok} sesuai${umur !== null ? `, umur ${umur}` : ""}${dom.kab ? `, ${namaKab(dom.kab)}` : ""}.`);
     }
 
     // 2. Izin orang tua bila di bawah 17 tahun
