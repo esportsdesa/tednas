@@ -216,7 +216,9 @@
     try {
       const { token } = await DB.kabariKapten(t.id);
       const tautan = new URL(`perbaiki.html#${t.kode}.${token}`, location.href).href;
-      const teks = SARAN.pesanWa({ tim: t, ai: aiUntukKapten(t), tautan, grup: (window.APP_CONFIG || {}).WA_GRUP });
+      // info: hasil AI terakhir → kasus pesan (minta perbaikan / ingatkan / perbaikan lagi / sedang dicek), lihat SARAN.kasus.
+      const info = DB.aiAda ? (t.ai ? { akhir: t.ai.akhir, pada: t.ai.pada, tunggu: t.ai.rincian && t.ai.rincian.tunggu } : null) : undefined;
+      const teks = SARAN.pesanWa({ tim: t, ai: aiUntukKapten(t), tautan, grup: (window.APP_CONFIG || {}).WA_GRUP, info });
       const url = `https://wa.me/${t.wa_kapten}?text=${encodeURIComponent(teks)}`;
       if (w) { w.opener = null; w.location = url; } else location.href = url;
       muatTim();

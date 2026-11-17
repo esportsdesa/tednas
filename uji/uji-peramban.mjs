@@ -51,6 +51,8 @@ const JENIS = { ".html": "text/html; charset=utf-8", ".js": "text/javascript", "
 const srv = createServer(async (req, res) => {
   const u = new URL(req.url, "http://x");
   if (u.pathname.startsWith("/sb/")) return supabase(req, res, u);
+  // Vercel Web Analytics (bba47b2) hanya ada di Vercel; di server uji cukup skrip kosong.
+  if (u.pathname === "/_vercel/insights/script.js") { res.writeHead(200, { "content-type": "text/javascript" }); return res.end(""); }
   if (u.pathname === "/js/config.js") {
     res.writeHead(200, { "content-type": "text/javascript" });
     return res.end(`window.APP_CONFIG = { SUPABASE_URL: "http://${req.headers.host}/sb", SUPABASE_ANON_KEY: "uji", TURNSTILE_SITE_KEY: "1x00000000000000000000AA", DRIVE_URL: ${JSON.stringify(DRIVE_URL)}, WA_GRUP: ${JSON.stringify(WA_GRUP)} };`);

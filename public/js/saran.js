@@ -98,36 +98,80 @@
   }
 
   const labelPemain = (u) => `Pemain ${u}${u === 1 ? ' (kapten)' : u === 6 ? ' (cadangan)' : ''}`;
+  const kapan = (s) => (s ? Date.parse(s) || 0 : 0);
 
-  /** Pesan WhatsApp untuk kapten. tim = baris tednas_tim (+pemain), ai = bentuk daftar() di atas. */
-  function pesanWa({ tim, ai, tautan, grup }) {
+  /* Kasus pesan WA (user 17 Nov: "teks otomatisnya menyesuaikan kasusnya"). Dipilih dari status tim, hasil agen AI, jejak
+     kapten (dikabari / memperbaiki), dan keanggotaan grup peserta bila diketahui. */
+  const KASUS = {
+    undang_grup: 'Undang ke grup',
+    sudah_grup: 'Ingatkan pemain masuk grup',
+    perbaiki: 'Minta perbaikan',
+    perbaiki_lagi: 'Minta perbaikan lagi',
+    ingatkan: 'Ingatkan perbaikan',
+    diproses: 'Kabari: sedang dicek',
+    panitia: 'Kabari: dicek panitia'
+  };
+
+  /** tim = baris tednas_tim; saran = hasil daftar(); info = {akhir, pada, tunggu} dari tednas_ai (null = belum dicek,
+   *  undefined = tidak diketahui); diGrup = true | false | null (tidak diketahui). */
+  function kasus({ tim, saran, info, diGrup }) {
+    if (tim.status === 'terverifikasi') return diGrup === true ? 'sudah_grup' : 'undang_grup';
+    const adaSaran = !!(saran && (saran.tim.length || saran.pemain.length));
+    const dikabari = kapan(tim.kapten_dikabari), diperbaiki = kapan(tim.perbaiki_pada);
+    const dicek = info ? kapan(info.pada) : 0;
+    // Sedang dicek: belum ada hasil AI, hasilnya galat, kapten memperbaiki setelah pemeriksaan terakhir, atau tanpa catatan
+    // untuk kapten tapi masih ada berkas yang menunggu dibaca model besar. Catatan yang sudah ada tetap dikirim walau sebagian
+    // berkas masih menunggu (perilaku sejak WA Kapten pertama).
+    const proses = info === undefined ? !adaSaran : (!info || info.akhir === 'galat' || diperbaiki > dicek || (!adaSaran && !!info.tunggu));
+    if (proses) return 'diproses';
+    if (!adaSaran) return 'panitia';
+    if (!dikabari) return 'perbaiki';
+    if (diperbaiki > dikabari) return 'perbaiki_lagi';
+    return dicek > dikabari ? 'perbaiki' : 'ingatkan';
+  }
+
+  /** Pesan WhatsApp untuk kapten. tim = baris tednas_tim (+pemain), ai = bentuk daftar() di atas.
+   *  info / diGrup: lihat kasus(). Tanpa keduanya perilakunya sama dengan versi lama. */
+  function pesanWa({ tim, ai, tautan, grup, info, diGrup = null }) {
+    const d = daftar(ai, tim.pemain);
+    const k = kasus({ tim, saran: d, info, diGrup });
     const baris = [`Halo Kak ${tim.nama_kapten}, kapten tim *${tim.nama_tim}* (${tim.kode}), Desa ${tim.desa}.`, ''];
     // Tim terverifikasi (user 17 Nov): isinya ajakan masuk grup peserta.
-    if (tim.status === 'terverifikasi') {
+    if (k === 'undang_grup' || k === 'sudah_grup') {
       baris.push('Tim kakak sudah *TERVERIFIKASI* di Turnamen Esports Desa Nasional 2027.');
-      if (grup) baris.push('', 'Ajak semua pemain masuk grup WhatsApp peserta. Jadwal dan pengumuman turnamen dikirim di sana:', grup);
+      if (grup) {
+        if (k === 'sudah_grup') baris.push('', 'Kakak sudah ada di grup WhatsApp peserta. Pastikan semua pemain juga sudah masuk, karena jadwal kualifikasi online dan pengumuman turnamen dikirim di sana:', grup);
+        else baris.push('', (diGrup === false ? 'Nomor kakak belum ada di grup WhatsApp peserta. ' : '') + 'Masuk grup WhatsApp peserta dan ajak semua pemain. Jadwal kualifikasi online dan pengumuman turnamen dikirim di sana:', grup);
+      }
       baris.push('', 'Panitia TEDNas 2027');
       return baris.join('\n');
-    } else {
-      const d = daftar(ai, tim.pemain);
-      baris.push('Terima kasih sudah mendaftar Turnamen Esports Desa Nasional 2027.');
-      if (d.tim.length || d.pemain.length) {
-        baris.push('Dari pemeriksaan berkas, ada yang perlu diperbaiki:');
-        for (const x of d.tim) baris.push('', `• ${x.teks}`);
-        for (const p of d.pemain) {
-          baris.push('', `*${labelPemain(p.urutan)}: ${p.nama}*`);
-          for (const s of p.saran) baris.push(`• ${s.teks}`);
-        }
-        baris.push('', 'Perbaiki langsung lewat tautan ini (khusus tim kakak, jangan disebar):', tautan, '',
-          'Setelah disimpan, berkas dicek ulang otomatis. Kalau semuanya sesuai, tim langsung terverifikasi.');
-      } else {
-        baris.push('Berkas tim kakak sedang diperiksa panitia. Kalau ada berkas yang ingin diganti, pakai tautan ini (khusus tim kakak, jangan disebar):', tautan);
-      }
     }
-    if (grup) baris.push('', `Gabung grup WhatsApp peserta untuk info jadwal: ${grup}`);
+    if (k === 'perbaiki' || k === 'perbaiki_lagi' || k === 'ingatkan') {
+      if (k === 'perbaiki_lagi') baris.push('Terima kasih sudah memperbaiki berkas. Setelah dicek ulang, masih ada yang perlu diperbaiki:');
+      else if (k === 'ingatkan') baris.push('Mengingatkan lagi ya Kak, tim kakak belum bisa diverifikasi karena masih ada berkas yang perlu diperbaiki:');
+      else {
+        baris.push('Terima kasih sudah mendaftar Turnamen Esports Desa Nasional 2027.');
+        baris.push(tim.kapten_dikabari ? 'Ada pembaruan hasil pemeriksaan berkas tim kakak. Yang perlu diperbaiki:' : 'Dari pemeriksaan berkas, ada yang perlu diperbaiki:');
+      }
+      for (const x of d.tim) baris.push('', `• ${x.teks}`);
+      for (const p of d.pemain) {
+        baris.push('', `*${labelPemain(p.urutan)}: ${p.nama}*`);
+        for (const s of p.saran) baris.push(`• ${s.teks}`);
+      }
+      baris.push('', 'Perbaiki langsung lewat tautan ini (khusus tim kakak, jangan disebar):', tautan, '',
+        'Setelah disimpan, berkas dicek ulang otomatis. Kalau semuanya sesuai, tim langsung terverifikasi.');
+    } else {
+      baris.push(kapan(tim.perbaiki_pada) > kapan(info && info.pada) ? 'Terima kasih sudah memperbaiki berkas. Berkas yang baru sedang dicek ulang.'
+        : 'Terima kasih sudah mendaftar Turnamen Esports Desa Nasional 2027.');
+      baris.push(k === 'panitia' ? 'Berkas tim kakak sedang diperiksa panitia.' : 'Berkas tim kakak sedang diperiksa. Kalau semuanya sesuai, tim langsung terverifikasi.',
+        'Kalau ada berkas yang ingin diganti, pakai tautan ini (khusus tim kakak, jangan disebar):', tautan);
+    }
+    if (grup && diGrup !== true) {
+      baris.push('', diGrup === false ? `Nomor kakak belum ada di grup WhatsApp peserta. Gabung untuk info jadwal: ${grup}` : `Gabung grup WhatsApp peserta untuk info jadwal: ${grup}`);
+    }
     baris.push('', 'Panitia TEDNas 2027');
     return baris.join('\n');
   }
 
-  window.SARAN = { satu, ganda, daftar, pesanWa, labelPemain };
+  window.SARAN = { satu, ganda, daftar, pesanWa, kasus, KASUS, labelPemain };
 })();
