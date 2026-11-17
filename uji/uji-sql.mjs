@@ -1,6 +1,6 @@
 /**
  * Uji SQL TEDNas di Postgres SUNGGUHAN (container sementara di server jot, dibuang setelahnya):
- * skema-tednas.sql + migration-8-drive.sql + migration-9-cermin-drive.sql + migration-10-ai-periksa.sql + migration-12-perbaiki.sql + migration-13-komunitas.sql di atas tiruan Supabase (uji/sql-tiruan-supabase.sql).
+ * skema-tednas.sql + migration-8-drive.sql + migration-9-cermin-drive.sql + migration-10-ai-periksa.sql + migration-12-perbaiki.sql + migration-13-komunitas.sql + migration-14-jalur-mzone-dasbor.sql di atas tiruan Supabase (uji/sql-tiruan-supabase.sql).
  * Tanda HMAC dibuat dengan crypto Node — sama dengan Utilities.computeHmacSha256Signature di Apps Script —
  * jadi uji ini juga membuktikan pgcrypto menghitung tanda yang sama.
  *   node uji/uji-sql.mjs            (butuh ssh jot + docker postgres:17-alpine di sana)
@@ -581,6 +581,46 @@ do $u$ begin
   assert (select komunitas_id from public.tednas_tim where wa_kapten = '6281234567822') = (select id from _k where n = 2), 'tim yang sudah punya komunitas tidak disentuh';
   assert (select count(*) from public.tednas_komunitas where bawaan) = 1, 'migrasi ulang tidak membuat bawaan kedua';
 end $u$;
+
+-- 16. jalur berkunci MZone & dasbor (migrasi 14): kunci terpisah, ID ML dari bacaan AI, dasbor tanpa data pribadi
+create temp table _j (mz text, db text);
+grant all on _j to anon, authenticated;
+insert into _j select mzone_rahasia, dasbor_rahasia from public.tednas_rahasia where id = 1;
+do $u$ begin
+  assert (select mz <> db and length(mz) = 64 and length(db) = 64 from _j), 'dua kunci berbeda';
+  assert (select mz not in (drive_rahasia, ai_rahasia, perbaiki_rahasia) from _j, public.tednas_rahasia where id = 1), 'beda dari kunci lain';
+end $u$;
+update public.tednas_ai set rincian = jsonb_set(rincian, '{pemain}', ${q(JSON.stringify([
+  { u: 1, butir: [{ b: "profil_ml", s: "ok", t: "Akun ML 1644930996 (16955)." }], data: { ml: "1644930996 (16955)", ml_nick: "Aemeath", nik: "3507********0001" } },
+  { u: 2, butir: [{ b: "profil_ml", s: "cek", t: "ID akun Mobile Legends tidak terlihat." }, { b: "identitas", s: "cek", t: 'Nama di dokumen "BUDI RAHASIA" tidak sama dengan nama terdaftar "Pemain 20-2".' }], data: { ml: "", nik: "3507********0002" } }]))}::jsonb)
+  where tim_id = (select id from _pb);
+set role anon;
+${harusGagal(`select public.tednas_mzone_tim(repeat('0', 64))`, "KUNCI_SALAH")}
+${harusGagal(`select public.tednas_mzone_tim((select db from _j))`, "KUNCI_SALAH")}
+${harusGagal(`select public.tednas_dasbor((select mz from _j))`, "KUNCI_SALAH")}
+${harusGagal(`select public.tednas_dasbor(${q(RAHASIA3)})`, "KUNCI_SALAH")}
+${harusGagal(`select public.tednas_ml_pecah('1 (2)')`, "permission denied")}
+do $u$ declare v json; s json; t json; semua int; n int := 0; dari text := ''; begin
+  semua := (public.tednas_mzone_tim((select mz from _j), '', 500)->>'total')::int;
+  loop
+    v := public.tednas_mzone_tim((select mz from _j), dari, 3);
+    n := n + json_array_length(v->'tim');
+    exit when v->>'berikut' is null;
+    dari := v->>'berikut';
+  end loop;
+  assert n = semua, format('paging lengkap %s/%s', n, semua);
+  select x into t from json_array_elements(public.tednas_mzone_tim((select mz from _j), '', 500)->'tim') x where x->>'kode' = (select kode from _pb);
+  assert t->>'wa_kapten' = '6281234567820' and t->'komunitas'->>'nama' = 'MZone Tour', 'nomor WA kapten + komunitas untuk klaim akun';
+  assert t->'pemain'->0->'ml'->>'id' = '1644930996' and t->'pemain'->0->'ml'->>'zone' = '16955' and t->'pemain'->0->>'ml_nick' = 'Aemeath', 'ID + Zone ML dari bacaan AI';
+  assert json_typeof(t->'pemain'->1->'ml') = 'null' and json_array_length(t->'pemain') = 5, 'ID ML tak terbaca = null';
+  s := public.tednas_dasbor((select db from _j));
+  assert json_array_length(s->'tim') = semua and json_array_length(s->'komunitas') >= 1, 'dasbor semua tim';
+  select x into t from json_array_elements(s->'tim') x where x->>'kode' = (select kode from _pb);
+  assert (t->>'pemain')::int = 5 and (t->'ai'->'kategori'->>'ml_id')::int = 1 and (t->'ai'->'kategori'->>'nama')::int = 1, 'kategori catatan AI';
+  assert position('6281234567820' in s::text) = 0 and position('Pemain 20-' in s::text) = 0 and position('BUDI RAHASIA' in s::text) = 0
+     and position('*****' in s::text) = 0 and position('1644930996' in s::text) = 0, 'dasbor tanpa WA, nama pemain, isi catatan, NIK, ID ML';
+end $u$;
+reset role;
 \\echo SEMUA_LULUS
 `;
 
@@ -592,8 +632,9 @@ const migrasi9 = baca("supabase/migration-9-cermin-drive.sql");
 const migrasi10 = baca("supabase/migration-10-ai-periksa.sql");
 const migrasi12 = baca("supabase/migration-12-perbaiki.sql");
 const migrasi13 = baca("supabase/migration-13-komunitas.sql");
+const migrasi14 = baca("supabase/migration-14-jalur-mzone-dasbor.sql");
 writeFileSync(f, ["\\set ON_ERROR_STOP 1", "\\set QUIET 1", "\\set VERBOSITY verbose", "set client_min_messages = warning;", baca("uji/sql-tiruan-supabase.sql"), skema,
-  "-- migrasi 8, 9, 10, 12 & 13 dua kali: harus aman dijalankan ulang", migrasi, migrasi, migrasi9, migrasi9, migrasi10, migrasi10, migrasi12, migrasi12, migrasi13, migrasi13, SQL_BANTU, uji, uji2.replace("-- @@MIGRASI13@@", () => `reset role;\n${migrasi13}`)].join("\n")
+  "-- migrasi 8, 9, 10, 12, 13 & 14 dua kali: harus aman dijalankan ulang", migrasi, migrasi, migrasi9, migrasi9, migrasi10, migrasi10, migrasi12, migrasi12, migrasi13, migrasi13, migrasi14, migrasi14, SQL_BANTU, uji, uji2.replace("-- @@MIGRASI13@@", () => `reset role;\n${migrasi13}`)].join("\n")
   .replace(/^-- (\d+)\. (.*)$/gm, (_, n, t) => `\\echo LANGKAH ${n}: ${t}`));
 const NAMA = "tednas-uji-pg";
 const ssh = (cmd, input) => execFileSync("ssh", ["-o", "ConnectTimeout=15", "jot", cmd], { input, encoding: "utf8", stdio: ["pipe", "pipe", "pipe"] });
@@ -604,7 +645,7 @@ try {
   catch (e) { console.error(`GAGAL:\n${e.stdout ?? ""}\n${e.stderr ?? e.message}`); process.exitCode = 1; }
   if (keluar !== undefined) {
     if (!keluar.includes("SEMUA_LULUS")) { console.error(keluar); process.exitCode = 1; }
-    else console.log("uji SQL lulus (skema + migrasi 8, 9, 10, 12 & 13 di Postgres 17, 15 kelompok)");
+    else console.log("uji SQL lulus (skema + migrasi 8–14 di Postgres 17, 16 kelompok)");
   }
 } finally {
   try { ssh(`docker rm -f ${NAMA} >/dev/null 2>&1; true`); } catch { /* */ }
