@@ -104,7 +104,7 @@
      kapten (dikabari / memperbaiki), dan keanggotaan grup peserta bila diketahui. */
   const KASUS = {
     undang_grup: 'Undang ke grup',
-    sudah_grup: 'Ingatkan pemain masuk grup',
+    sudah_grup: 'Beres, sudah di grup',
     perbaiki: 'Minta perbaikan',
     perbaiki_lagi: 'Minta perbaikan lagi',
     ingatkan: 'Ingatkan perbaikan',
@@ -136,12 +136,13 @@
     const d = daftar(ai, tim.pemain);
     const k = kasus({ tim, saran: d, info, diGrup });
     const baris = [`Halo Kak ${tim.nama_kapten}, kapten tim *${tim.nama_tim}* (${tim.kode}), Desa ${tim.desa}.`, ''];
-    // Tim terverifikasi (user 17 Nov): isinya ajakan masuk grup peserta.
+    // Tim terverifikasi (user 17 Nov): isinya ajakan masuk grup peserta. Cukup minimal 1 perwakilan tim di grup, tidak harus
+    // semua pemain (user 18 Nov) ⇒ sudah_grup = beres; ruang verifikasi tidak menawarkan WA untuk kasus itu.
     if (k === 'undang_grup' || k === 'sudah_grup') {
       baris.push('Tim kakak sudah *TERVERIFIKASI* di Turnamen Esports Desa Nasional 2027.');
       if (grup) {
-        if (k === 'sudah_grup') baris.push('', 'Kakak sudah ada di grup WhatsApp peserta. Pastikan semua pemain juga sudah masuk, karena jadwal kualifikasi online dan pengumuman turnamen dikirim di sana:', grup);
-        else baris.push('', (diGrup === false ? 'Nomor kakak belum ada di grup WhatsApp peserta. ' : '') + 'Masuk grup WhatsApp peserta dan ajak semua pemain. Jadwal kualifikasi online dan pengumuman turnamen dikirim di sana:', grup);
+        if (k === 'sudah_grup') baris.push('', 'Kakak sudah ada di grup WhatsApp peserta. Jadwal kualifikasi online dan pengumuman turnamen dikirim di sana:', grup);
+        else baris.push('', (diGrup === false ? 'Nomor kakak belum ada di grup WhatsApp peserta. ' : '') + 'Masuk grup WhatsApp peserta (cukup minimal 1 perwakilan tim, tidak harus semua pemain). Jadwal kualifikasi online dan pengumuman turnamen dikirim di sana:', grup);
       }
       // Semua data tetap bisa diubah setelah terverifikasi (user 18 Nov; migrasi 15).
       if (tautan) baris.push('', 'Kalau ada data tim yang perlu diubah (nama tim, pemain, berkas, atau desa), pakai tautan ini (khusus tim kakak, jangan disebar):', tautan);

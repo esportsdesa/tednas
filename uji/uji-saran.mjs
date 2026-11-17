@@ -31,7 +31,8 @@ uji("terverifikasi: undang ke grup bila kapten belum/tak diketahui di grup, inga
   assert.ok(p.includes(GRUP));
   assert.match(p, /Kalau ada data tim yang perlu diubah.*\nhttps:\/\/esportsdesa\.id\/perbaiki#TED-00009\.tok/s, "tautan ubah data tetap ada (semua data bisa diubah)");
   const q = pesan(t, KOSONG, null, true);
-  assert.match(q, /Kakak sudah ada di grup WhatsApp peserta\. Pastikan semua pemain juga sudah masuk/);
+  assert.match(q, /Kakak sudah ada di grup WhatsApp peserta\. Jadwal kualifikasi online/);
+  assert.doesNotMatch(q, /semua pemain/, "cukup 1 perwakilan tim di grup (user 18 Nov)");
 });
 
 uji("menunggu + catatan, belum dikabari → minta perbaikan (daftar + tautan + grup)", () => {
