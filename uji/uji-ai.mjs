@@ -95,6 +95,7 @@ const bacaBaik = (p, i) => ({
   follow_ppdt_path: { instagram: true, akun_terlihat: true, username_profil: "ditjen_ppdt", status: "mengikuti" },
 });
 const salin = (x) => JSON.parse(JSON.stringify(x));
+const TWIBBON_BAIK = { instagram: true, jenis: "story", twibbon_terlihat: true, tag_terlihat: true, akun_pemosting: "timdesa" };
 
 await uji("nilaiTim: semua sesuai → lolos", () => {
   const baca = Object.fromEntries(TIM.pemain.map((p, i) => [p.urutan, bacaBaik(p, i)]));
@@ -209,6 +210,7 @@ await uji("nilaiTim: identitas apa pun yang memuat alamat; domisili harus satu k
 function dunia({ tim = TIM, ubah = () => {}, webApp = null, worker = null } = {}) {
   const catat = { simpan: [], webapp: [], model: [], url: [] };
   const baca = Object.fromEntries(tim.pemain.map((p, i) => [p.urutan, bacaBaik(p, i)]));
+  baca[0] = { twibbon: { ...TWIBBON_BAIK } }; // bukti twibbon tim (migrasi 16)
   ubah(baca);
   const isiBerkas = (path) => Buffer.from(`BERKAS|${path}`);
   const jawab = (o, status = 200) => new Response(typeof o === "string" ? o : JSON.stringify(o), { status, headers: { "content-type": "application/json" } });
@@ -238,6 +240,7 @@ function dunia({ tim = TIM, ubah = () => {}, webApp = null, worker = null } = {}
       const g = isi.messages[0].images ? Buffer.from(isi.messages[0].images[0], "base64").toString() : "";
       let isiJawab;
       if (!g) isiJawab = { pantas: true, alasan: "" };
+      else if (g.split("|")[1] === tim.twibbon_path) isiJawab = baca[0].twibbon;
       else {
         const path = g.split("|")[1], p = tim.pemain.find((x) => Object.values(x).includes(path));
         const k = { dokumen_path: "identitas", profil_ml_path: "profil_ml", follow_esports_path: "follow_esports_path", follow_ppdt_path: "follow_ppdt_path", izin_path: "izin" }[Object.keys(p).find((x) => p[x] === path)];
@@ -505,6 +508,43 @@ await uji("gabungan: gambar melebihi konteks 9b → tidak diulang ke worker lain
   assert.equal(W4.catat.simpan[0].p_hasil, "cek");
   assert.match(W4.catat.simpan[0].p_ringkas, /Gambar terlalu besar untuk dibaca model/);
   assert.equal(W4.catat.model.filter((x) => JSON.stringify(x).includes(ML2)).length, 1);
+});
+
+/* ── migrasi 16: bukti twibbon 1 per tim ───────────────────────────────── */
+await uji("twibbon: wajib untuk form v2, dicek instagram + twibbon + tag; tim lama tanpa twibbon tidak dicatat", () => {
+  const baca = Object.fromEntries(TIM.pemain.map((p, i) => [p.urutan, bacaBaik(p, i)]));
+  assert.equal(N.nilaiTim(TIM, baca, null, {}).rincian.tim.length, 0, "tim lama (form v1) tanpa twibbon: tidak ada butir twibbon");
+  const v2 = { ...TIM, form_versi: 2 };
+  assert.match(N.nilaiTim(v2, baca, null, {}).ringkas, /Screenshot post twibbon belum diunggah/);
+  const ada = { ...v2, twibbon_path: "gdrive/TWIBBON-1.jpg" };
+  const nilai = (tw) => N.nilaiTim(ada, { ...baca, 0: { twibbon: tw } }, null, {});
+  const ok = nilai({ ...TWIBBON_BAIK });
+  assert.equal(ok.hasil, "lolos", ok.ringkas);
+  assert.match(ok.rincian.tim[0].t, /^Post twibbon \(story\) dengan tag @esportsdesa\.official oleh @timdesa\.$/);
+  assert.match(nilai({ ...TWIBBON_BAIK, instagram: false }).ringkas, /Bukti twibbon bukan tangkapan layar Instagram/);
+  assert.match(nilai({ ...TWIBBON_BAIK, twibbon_terlihat: false }).ringkas, /Twibbon TEDNas 2027 tidak terlihat/);
+  assert.match(nilai({ ...TWIBBON_BAIK, tag_terlihat: false }).ringkas, /Tag @esportsdesa\.official tidak terlihat/);
+  assert.match(nilai(undefined).ringkas, /Screenshot post twibbon tidak terbaca/);
+  assert.match(nilai({ galat: "Berkas tidak ditemukan di Drive." }).ringkas, /Berkas tidak ditemukan di Drive/);
+  const lama = N.nilaiTim({ ...TIM, twibbon_path: "gdrive/TWIBBON-2.jpg" }, { ...baca, 0: { twibbon: { ...TWIBBON_BAIK, tag_terlihat: false } } }, null, {});
+  assert.equal(lama.hasil, "cek", "tim lama yang mengunggah twibbon tetap dicek");
+});
+
+await uji("agen: bukti twibbon diambil lewat kunci AI dan dibaca model; ditolak 9b → dibaca ulang 35B", async () => {
+  const T = { ...TIM, form_versi: 2, twibbon_path: "gdrive/TWIBBON-9.jpg" };
+  const W = dunia({ tim: T });
+  await A.putaran({ fetch: W.f, pdfKeGambar: W.pdfKeGambar });
+  const s = W.catat.simpan[0];
+  assert.equal(s.p_hasil, "lolos", s.p_ringkas);
+  assert.equal(W.catat.webapp.length, 21, "20 berkas pemain + 1 twibbon");
+  assert.ok(W.catat.webapp.some((x) => x.path === T.twibbon_path));
+  assert.ok(W.catat.model.some((x) => /KAMI SIAP JUARA/.test(x.messages[0].content)), "pertanyaan twibbon dikirim ke model");
+  assert.ok(s.p_rincian.tim.some((b) => b.b === "twibbon" && b.s === "ok"));
+  const W2 = dunia({ tim: T, ubah: (b) => { b[0].twibbon.tag_terlihat = false; } });
+  await A.putaran({ fetch: W2.f, pdfKeGambar: W2.pdfKeGambar });
+  assert.match(W2.catat.simpan[0].p_ringkas, /Tag @esportsdesa\.official tidak terlihat/);
+  const n = { rincian: { tim: [{ b: "twibbon", s: "cek", t: "Tag @esportsdesa.official tidak terlihat di postingan twibbon." }], pemain: [] } };
+  assert.deepEqual(A.berkasUlang(T, n, { 0: { twibbon: { tag_terlihat: false } } }, { 0: { twibbon_path: {} } }), [{ u: 0, kolom: "twibbon_path" }]);
 });
 
 console.log(`${lulus} uji agen AI lulus`);

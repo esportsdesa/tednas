@@ -39,6 +39,7 @@ const uji = async (nama, f) => {
 
 /* ── situs statis + Supabase tiruan di satu server ────────────────────── */
 let pendaftaran = 0, daftarTerakhir = null;
+let formVersi = 1; // migrasi 16: tim form v2 wajib WA pemain + twibbon
 const TOKEN = "cd".repeat(20), perbaikan = [];
 // tednas_perbaiki_lihat tiruan: TED-00001 dengan dua catatan AI (pemain 2 ID ML, pemain 3 nama); setelah disimpan = dicek ulang.
 const dataPerbaiki = () => ({ kode: "TED-00001", nama_tim: "Garuda Mangliawan", nama_kapten: "A Pemain 1", desa: "Mangliawan", kabupaten: "KAB. MALANG",
@@ -76,6 +77,9 @@ async function supabase(req, res, u) {
     for (const p of b.p_pemain) for (const k of ["dokumen_path", "profil_ml_path", "follow_esports_path", "follow_ppdt_path"]) {
       if (!W.sahkan(p[k])) return kirim(400, { code: "P0001", message: "DOKUMEN_TIDAK_ADA" });
     }
+    // Migrasi 16: WA pemain 2–6 + bukti twibbon bertanda Web App.
+    if (b.p_pemain.slice(1).some((p) => !/^628\d{7,12}$/.test(p.wa || ""))) return kirim(400, { code: "P0001", message: "WA_PEMAIN_TIDAK_VALID" });
+    if (!b.p_twibbon || !W.sahkan(b.p_twibbon)) return kirim(400, { code: "P0001", message: "TWIBBON_TIDAK_ADA" });
     pendaftaran++;
     daftarTerakhir = b;
     const t = W.daftarTim(b.p_nama_tim, b.p_pemain.map((p) => ({ nama: p.nama, jenis: p.dokumen_jenis, dok: p.dokumen_path, ml: p.profil_ml_path, ig1: p.follow_esports_path, ig2: p.follow_ppdt_path, izin: p.izin_path })), { wa: b.p_wa });
@@ -92,12 +96,16 @@ async function supabase(req, res, u) {
   if (u.pathname === "/sb/rest/v1/rpc/tednas_ubah_lihat") {
     const b = JSON.parse(isi);
     if (b.p_kode !== "TED-00001" || b.p_token !== TOKEN) return kirim(400, { code: "P0001", message: "TAUTAN_TIDAK_SAH" });
-    return kirim(200, { ...dataPerbaiki(), kecamatan: "Pakis", wa_kapten: "6281234567801", prov_kode: "35", kab_kode: "35.07", desa_kode: "35.07.18.2010" });
+    const d = dataPerbaiki();
+    return kirim(200, { ...d, kecamatan: "Pakis", wa_kapten: "6281234567801", prov_kode: "35", kab_kode: "35.07", desa_kode: "35.07.18.2010",
+      form_versi: formVersi, ada_twibbon: formVersi >= 2 ? false : false,
+      pemain: d.pemain.map((p) => ({ ...p, wa: p.urutan === 1 ? "6281234567801" : formVersi >= 2 ? `62812000000${p.urutan}` : null })) });
   }
   if (u.pathname === "/sb/rest/v1/rpc/tednas_ubah_tim") {
     const b = JSON.parse(isi);
     if (b.p_kode !== "TED-00001" || b.p_token !== TOKEN) return kirim(400, { code: "P0001", message: "TAUTAN_TIDAK_SAH" });
     if (b.p_tim && b.p_tim.wa && b.p_tim.wa.replace(/\D/g, "").endsWith("7802")) return kirim(400, { code: "P0001", message: "WA_SUDAH_ADA" });
+    if (b.p_tim && b.p_tim.twibbon_path && !W.sahkan(b.p_tim.twibbon_path)) return kirim(400, { code: "P0001", message: "TWIBBON_TIDAK_ADA" });
     for (const p of b.p_pemain) for (const k of ["dokumen_path", "profil_ml_path", "follow_esports_path", "follow_ppdt_path", "izin_path"]) {
       if (p[k] && !W.sahkan(p[k])) return kirim(400, { code: "P0001", message: "PROFIL_ML_TIDAK_ADA" });
     }
@@ -177,8 +185,12 @@ async function isiFormulir({ tim, wa, awal, cadangan = false, jalur = "/daftar" 
   await halaman.fill("#nama-tim", tim);
   for (let i = 1; i <= (cadangan ? 6 : 5); i++) await halaman.fill(`#pemain-${i}`, `${awal} Pemain ${i}`);
   await halaman.fill("#wa", wa);
+  // Migrasi 16: WA tiap pemain wajib (pemain 1 = nomor kapten).
   await halaman.click("#lanjut");
-  const blok = await halaman.$$(".blok-pemain");
+  assert.match(await halaman.textContent("#salah"), /Nomor WhatsApp pemain 2 belum diisi/);
+  for (let i = 2; i <= (cadangan ? 6 : 5); i++) await halaman.fill(`#wa-pemain-${i}`, `0813 0000 ${String(i).padStart(4, "0")}`);
+  await halaman.click("#lanjut");
+  const blok = await halaman.$$("#pemain-berkas .blok-pemain");
   assert.equal(blok.length, cadangan ? 6 : 5);
   for (const [i, b] of blok.entries()) {
     const k = `${awal}${i}`;
@@ -189,6 +201,11 @@ async function isiFormulir({ tim, wa, awal, cadangan = false, jalur = "/daftar" 
     if (i === 4) { await (await b.$("[data-bawah]")).check(); await (await b.$("[data-file=izin]")).setInputFiles(PDF(k)); }
   }
   await halaman.waitForFunction(() => [...document.querySelectorAll("[data-status]")].filter((s) => !s.closest("[hidden]")).every((s) => s.textContent && s.textContent !== "Menyiapkan..."));
+  // Bukti twibbon tim wajib (1 per tim).
+  await halaman.click("#lanjut");
+  assert.match(await halaman.textContent("#salah"), /Screenshot post twibbon tim belum diunggah/);
+  await halaman.setInputFiles("#tw-file", PNG(`${awal}tw`));
+  await halaman.waitForSelector("#tw-status .berkas-ok");
   await halaman.click("#lanjut");
   await halaman.check("#setuju");
   // Turnstile kunci uji selalu lulus; tunggu tokennya terisi.
@@ -206,8 +223,10 @@ await uji("pendaftaran lengkap: 21 berkas langsung ke Drive, 2 sekaligus, data s
   assert.equal(await halaman.textContent("#kode"), "TED-00001");
   assert.ok(await halaman.isVisible("#wa-grup-link"), "tombol grup WhatsApp tampil setelah daftar");
   assert.match(await halaman.getAttribute("#wa-grup-link", "href"), /^https:\/\/chat\.whatsapp\.com\/\w+/);
-  assert.equal(unggahan, 21);
+  assert.equal(unggahan, 22, "21 berkas pemain + 1 bukti twibbon");
   assert.equal(puncak, 2, `unggahan bersamaan ${puncak}`);
+  assert.ok(W.sahkan(daftarTerakhir.p_twibbon), "twibbon bertanda Web App");
+  assert.deepEqual(daftarTerakhir.p_pemain.map((p) => p.wa), [null, "6281300000002", "6281300000003", "6281300000004", "6281300000005"], "WA pemain 2–5 (628…); pemain 1 = kapten");
   const t = W.db.tim[0];
   assert.equal(t.tersalin, 1); assert.ok(t.rapi > 0);
   const folder = W.benda.get(t.folder.split("/").pop());
@@ -250,7 +269,7 @@ await uji("berkas ditolak Web App → pesan jelas menyebut berkasnya; kirim ulan
   await halaman.click("#lanjut");
   await halaman.waitForSelector("#sukses:not([hidden])", { timeout: 60000 });
   gangguan = null;
-  assert.equal(unggahan - awal, 21, `total unggahan ${unggahan - awal} (sebelum galat ${sebelum})`);
+  assert.equal(unggahan - awal, 22, `total unggahan ${unggahan - awal} (sebelum galat ${sebelum}); 21 berkas + 1 twibbon`);
   assert.equal(pendaftaran, 3);
 });
 
@@ -337,6 +356,32 @@ await uji("ubah data tim (migrasi 15): nama tim, WA kapten, ganti desa, tambah c
   const cad = b.p_pemain.find((x) => x.baru);
   assert.equal(cad.urutan, 6); assert.equal(cad.nama, "Cadangan Baru");
   assert.ok(["dokumen_path", "profil_ml_path", "follow_esports_path", "follow_ppdt_path"].every((k) => W.sahkan(cad[k])), "berkas cadangan bertanda Web App");
+});
+
+await uji("ubah data tim form v2 (migrasi 16): WA pemain wajib & bisa diganti, bukti twibbon diunggah dari halaman ubah", async () => {
+  formVersi = 2;
+  try {
+    await halaman.goto(`${ASAL}/perbaiki.html#TED-00001.${TOKEN}`);
+    await halaman.reload();
+    await halaman.waitForSelector(".pb-twibbon [data-tw]");
+    assert.match(await halaman.textContent(".pb-twibbon"), /Belum ada\..*Wajib 1 per tim/s);
+    const blok2 = "[data-u='2']:not([data-baru])";
+    await halaman.$eval(`${blok2} details`, (d) => { d.open = true; });
+    assert.equal(await halaman.inputValue(`${blok2} [data-wa]`), "08120000002", "WA pemain tampil dalam format 08");
+    assert.equal(await halaman.$$eval("[data-u='1'] [data-wa]", (x) => x.length), 0, "pemain 1 memakai nomor kapten");
+    await halaman.fill(`${blok2} [data-wa]`, "");
+    await halaman.click("#pb-simpan");
+    await halaman.waitForFunction(() => /Nomor WhatsApp pemain 2 wajib diisi/.test(document.querySelector("#salah").textContent));
+    await halaman.fill(`${blok2} [data-wa]`, "0857-1111-2222");
+    await halaman.setInputFiles(".pb-twibbon [data-tw]", PNG("tw-ubah"));
+    await halaman.waitForSelector("#pb-tw-status .berkas-ok");
+    assert.match(await halaman.textContent("#pb-ringkas"), /data tim, 1 pemain diubah/);
+    await halaman.click("#pb-simpan");
+    await halaman.waitForFunction(() => /Perubahan tersimpan/.test(document.querySelector("#pb-kabar").textContent));
+    const b = perbaikan.at(-1);
+    assert.ok(W.sahkan(b.p_tim.twibbon_path), "twibbon bertanda Web App");
+    assert.deepEqual(b.p_pemain, [{ urutan: 2, wa: "6285711112222" }]);
+  } finally { formVersi = 1; }
 });
 
 await uji("tautan komunitas ToT: daftar?k=7 → spanduk komunitas → tercatat di pendaftaran; tetap diingat; tanpa halaman/menu ToT di situs", async () => {

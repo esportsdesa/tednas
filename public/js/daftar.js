@@ -13,6 +13,8 @@
     PROFIL_ML_TIDAK_ADA: 'Screenshot profil ada yang gagal tersimpan. Coba unggah lagi.',
     IZIN_TIDAK_ADA: 'Surat izin ada yang gagal tersimpan. Coba unggah lagi.',
     FOLLOW_TIDAK_ADA: 'Bukti follow Instagram ada yang gagal tersimpan. Coba unggah lagi.',
+    WA_PEMAIN_TIDAK_VALID: 'Nomor WA salah satu pemain belum benar. Contoh: 081234567890.',
+    TWIBBON_TIDAK_ADA: 'Screenshot post twibbon belum terunggah. Coba unggah lagi.',
     WA_SUDAH_ADA: 'Nomor WA ini sudah dipakai mendaftarkan tim lain.',
     CAPTCHA_GAGAL: 'Captcha-nya gagal atau kedaluwarsa. Coba sekali lagi.',
     CAPTCHA_BELUM_SIAP: 'Pendaftaran belum bisa diproses. Coba lagi nanti ya.',
@@ -23,6 +25,10 @@
     DRIVE_JENIS_TIDAK_SAH: 'Ada berkas yang bukan JPG, PNG, atau PDF.'
   };
   const LABEL_BERKAS = { dok: 'kartu identitas', ml: 'profil ML', ig1: 'bukti follow @esportsdesa.official', ig2: 'bukti follow @ditjen_ppdt', izin: 'surat izin' };
+  // Keputusan panitia 18 Nov: identitas apa pun yang memuat nama, tanggal lahir, dan alamat/domisili.
+  const JENIS_DOK = [['KTP', 'KTP'], ['KK', 'KK'], ['KIA', 'KIA (Kartu Identitas Anak)'], ['SIM', 'SIM'], ['Kartu Pelajar', 'Kartu Pelajar'], ['Suket RT/RW', 'Surat keterangan domisili'], ['Lainnya', 'Identitas/surat lain']];
+  // Bukti twibbon: satu screenshot per tim (migrasi 16).
+  const twibbon = { file: null, path: '' };
 
   const KUNCI_CAPTCHA = (window.APP_CONFIG || {}).TURNSTILE_SITE_KEY || '';
   const captchaAktif = !DB.lokal && KUNCI_CAPTCHA && !KUNCI_CAPTCHA.startsWith('GANTI');
@@ -62,7 +68,11 @@
   const pemain = Array.from({ length: 6 }, () => ({ jenis: 'KTP', dok: null, ml: null, ig1: null, ig2: null, izin: null, bawah17: false, pathDok: '', pathMl: '', pathIg1: '', pathIg2: '', pathIzin: '' }));
   const el = { prov: $('#prov'), kab: $('#kab'), cari: $('#cari-desa'), daftar: $('#desa-daftar'), salah: $('#salah') };
   const teksPilihan = (s) => s.options[s.selectedIndex].textContent;
-  const waNormal = () => { const w = $('#wa').value.replace(/\D/g, ''); return w.startsWith('08') ? '62' + w.slice(1) : w; };
+  const normalWa = (v) => { const w = String(v || '').replace(/\D/g, ''); return w.startsWith('08') ? '62' + w.slice(1) : w.startsWith('8') ? '62' + w : w; };
+  const waNormal = () => normalWa($('#wa').value);
+  /* Pemain 1 = kapten (nomor #wa); pemain 2–6 punya isian sendiri. */
+  const waPemain = (i) => (i === 0 ? waNormal() : normalWa($(`#wa-pemain-${i + 1}`).value));
+  const waSah = (w) => /^628\d{7,12}$/.test(w);
   const namaPemain = (i) => $(`#pemain-${i + 1}`).value.trim();
   /* Cadangan hanya ikut bila namanya diisi. */
   const pemainAktif = () => (namaPemain(5) ? [0, 1, 2, 3, 4, 5] : [0, 1, 2, 3, 4]);
@@ -88,7 +98,8 @@
       ['Desa', `${desaPilih[1]} (Kec. ${desaPilih[2]})`],
       ['Nama tim', $('#nama-tim').value.trim()], ['WhatsApp kapten', '+' + waNormal()],
       ...(komunitas ? [['Komunitas', komunitas.nama]] : []),
-      ...pemainAktif().map((i) => [labelPemain(i), `${namaPemain(i)} · ${pemain[i].jenis} + profil ML + 2 bukti follow IG${pemain[i].bawah17 ? ' + surat izin' : ''}`])
+      ...pemainAktif().map((i) => [labelPemain(i), `${namaPemain(i)} · +${waPemain(i)} · ${pemain[i].jenis} + profil ML + 2 bukti follow IG${pemain[i].bawah17 ? ' + surat izin' : ''}`]),
+      ['Bukti twibbon', twibbon.file ? twibbon.file.name : '-']
     ];
     $('#ulasan').innerHTML = baris.map(([a, b]) => `<dt>${esc(a)}</dt><dd>${esc(b)}</dd>`).join('');
   }
@@ -108,7 +119,10 @@
       if (namaPemain(5) && namaPemain(5).length < 2) return 'Nama pemain cadangan terlalu pendek.';
       const nama = pemainAktif().map((i) => namaPemain(i).toLowerCase());
       if (new Set(nama).size !== nama.length) return 'Ada nama pemain yang sama. Cek lagi ya.';
-      if (!/^628\d{7,12}$/.test(waNormal())) return 'Nomor WA-nya belum benar. Contoh: 081234567890.';
+      if (!waSah(waNormal())) return 'Nomor WA kapten belum benar. Contoh: 081234567890.';
+      for (const i of pemainAktif().slice(1)) {
+        if (!waSah(waPemain(i))) return `Nomor WhatsApp ${labelPemain(i).toLowerCase()} belum diisi atau belum benar. Contoh: 081234567890.`;
+      }
     }
     if (langkah === 3) {
       for (const i of pemainAktif()) {
@@ -118,6 +132,7 @@
         if (!pemain[i].ig2) return `Bukti follow @ditjen_ppdt ${labelPemain(i).toLowerCase()} belum diunggah.`;
         if (pemain[i].bawah17 && !pemain[i].izin) return `Surat izin ${labelPemain(i).toLowerCase()} belum diunggah.`;
       }
+      if (!twibbon.file) return 'Screenshot post twibbon tim belum diunggah (cukup 1 per tim).';
     }
     if (langkah === 4 && !$('#setuju').checked) return 'Centang dulu persetujuannya.';
     if (langkah === 4 && captchaAktif && !captchaToken) return 'Selesaikan captcha-nya dulu.';
@@ -244,7 +259,8 @@
       return `<fieldset class="blok-pemain" data-i="${i}">
         <legend>${esc(labelPemain(i))}: ${esc(namaPemain(i))}</legend>
         <label class="isian">Kartu identitas
-          <select data-jenis>${[['KTP', 'KTP'], ['KK', 'KK'], ['Kartu Pelajar', 'Kartu Pelajar'], ['Suket RT/RW', 'Surat keterangan domisili']].map(([v, t]) => `<option value="${v}" ${p.jenis === v ? 'selected' : ''}>${t}</option>`).join('')}</select></label>
+          <select data-jenis>${JENIS_DOK.map(([v, t]) => `<option value="${v}" ${p.jenis === v ? 'selected' : ''}>${t}</option>`).join('')}</select>
+          <small>Yang terlihat jelas nama, tanggal lahir, dan alamatnya. NIK boleh disensor.</small></label>
         <div class="dua-unggah">
           <label class="jatuhan"><input type="file" data-file="dok" accept="application/pdf,image/jpeg,image/png">Unggah kartu identitas<small>Foto atau PDF</small><span data-status="dok">${statusBerkas(p.dok)}</span></label>
           <label class="jatuhan"><input type="file" data-file="ml" accept="image/jpeg,image/png">Unggah profil ML<small>Screenshot</small><span data-status="ml">${statusBerkas(p.ml)}</span></label>
@@ -283,6 +299,20 @@
     status.innerHTML = statusBerkas(siap);
   });
 
+  /* Bukti twibbon tim (1 per tim): screenshot post story/feed bertwibbon dengan tag @esportsdesa.official. */
+  $('#tw-file').addEventListener('change', async (e) => {
+    const f = e.target.files[0]; if (!f) return;
+    if (!FOTO.includes(f.type)) { galat('Screenshot twibbon harus JPG atau PNG.'); return; }
+    if (f.size > MAKS_FOTO_ASLI) { galat('Gambarnya terlalu besar. Coba screenshot ulang.'); return; }
+    galat('');
+    const status = $('#tw-status');
+    status.textContent = 'Menyiapkan...';
+    const siap = await kecilkan(f);
+    if (siap.size > MAKS_BERKAS) { status.textContent = ''; galat('Berkasnya masih lebih dari 5 MB. Coba screenshot ulang.'); return; }
+    twibbon.file = siap; twibbon.path = '';
+    status.innerHTML = statusBerkas(siap);
+  });
+
   /* ---------- Kirim ---------- */
   async function kirim() {
     if (sedangKirim) return;
@@ -293,16 +323,17 @@
       // Dua berkas sekaligus. Yang sudah terunggah (path tersimpan) tidak diulang saat Kirim ditekan lagi.
       const aktif = pemainAktif(), tugas = [];
       for (const i of aktif) {
-        for (const f of ['dok', 'ml', 'ig1', 'ig2'].concat(pemain[i].bawah17 ? ['izin'] : [])) tugas.push({ i, f, k: 'path' + f[0].toUpperCase() + f.slice(1) });
+        for (const f of ['dok', 'ml', 'ig1', 'ig2'].concat(pemain[i].bawah17 ? ['izin'] : [])) tugas.push({ o: pemain[i], f, k: 'path' + f[0].toUpperCase() + f.slice(1), label: `${LABEL_BERKAS[f]} ${labelPemain(i)}` });
       }
-      const antre = tugas.filter((x) => !pemain[x.i][x.k]);
+      tugas.push({ o: twibbon, f: 'file', k: 'path', label: 'screenshot post twibbon' });
+      const antre = tugas.filter((x) => !x.o[x.k]);
       let selesai = tugas.length - antre.length, berhenti = false;
       tombol.textContent = `Mengunggah ${selesai} dari ${tugas.length}...`;
       const kerja = async () => {
         while (antre.length && !berhenti) {
           const x = antre.shift();
-          try { pemain[x.i][x.k] = await DB.unggahDokumen(pemain[x.i][x.f]); }
-          catch (e) { berhenti = true; e.berkas = `${LABEL_BERKAS[x.f]} ${labelPemain(x.i)}`; throw e; }
+          try { x.o[x.k] = await DB.unggahDokumen(x.o[x.f]); }
+          catch (e) { berhenti = true; e.berkas = x.label; throw e; }
           if (!berhenti) tombol.textContent = `Mengunggah ${++selesai} dari ${tugas.length}...`;
         }
       };
@@ -312,7 +343,8 @@
         nama_tim: $('#nama-tim').value.trim(), wa: waNormal(),
         prov_kode: el.prov.value, provinsi: teksPilihan(el.prov), kab_kode: el.kab.value, kabupaten: teksPilihan(el.kab),
         kecamatan: desaPilih[2], desa_kode: desaPilih[0], desa: desaPilih[1],
-        pemain: aktif.map((i) => ({ nama: namaPemain(i), dokumen_jenis: pemain[i].jenis, dokumen_path: pemain[i].pathDok, profil_ml_path: pemain[i].pathMl, follow_esports_path: pemain[i].pathIg1, follow_ppdt_path: pemain[i].pathIg2, izin_path: pemain[i].bawah17 ? pemain[i].pathIzin : null })),
+        pemain: aktif.map((i) => ({ nama: namaPemain(i), wa: i ? waPemain(i) : null, dokumen_jenis: pemain[i].jenis, dokumen_path: pemain[i].pathDok, profil_ml_path: pemain[i].pathMl, follow_esports_path: pemain[i].pathIg1, follow_ppdt_path: pemain[i].pathIg2, izin_path: pemain[i].bawah17 ? pemain[i].pathIzin : null })),
+        twibbon: twibbon.path,
         captcha: captchaToken,
         komunitas: komunitas ? komunitas.id : null
       });

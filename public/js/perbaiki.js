@@ -18,6 +18,8 @@
     PROFIL_ML_TIDAK_ADA: 'Screenshot profil ML gagal tersimpan. Unggah lagi.',
     FOLLOW_TIDAK_ADA: 'Bukti follow Instagram gagal tersimpan. Unggah lagi.',
     IZIN_TIDAK_ADA: 'Surat izin gagal tersimpan. Unggah lagi.',
+    WA_PEMAIN_TIDAK_VALID: 'Nomor WhatsApp pemain belum benar (contoh 0812xxxxxxx). Untuk tim yang mendaftar sejak 18 November, nomor tiap pemain wajib diisi.',
+    TWIBBON_TIDAK_ADA: 'Screenshot post twibbon gagal tersimpan. Unggah lagi.',
     NAMA_TIM_TIDAK_VALID: 'Nama tim 2–60 huruf.',
     WA_TIDAK_VALID: 'Nomor WhatsApp kapten tidak valid. Pakai nomor HP Indonesia, contoh 0812xxxxxxx.',
     WA_SUDAH_ADA: 'Nomor WhatsApp ini sudah dipakai kapten tim lain.',
@@ -39,12 +41,16 @@
     ['ig2', 'follow_ppdt_path', 'Follow @ditjen_ppdt', 'Screenshot, tombol "Mengikuti"', false, true],
     ['izin', 'izin_path', 'Surat izin orang tua/wali', 'Wajib bila di bawah 17 tahun', true, false]
   ];
-  const JENIS_DOK = [['KTP', 'KTP'], ['KK', 'KK'], ['Kartu Pelajar', 'Kartu Pelajar'], ['Suket RT/RW', 'Surat keterangan domisili']];
+  const JENIS_DOK = [['KTP', 'KTP'], ['KK', 'KK'], ['KIA', 'KIA (Kartu Identitas Anak)'], ['SIM', 'SIM'], ['Kartu Pelajar', 'Kartu Pelajar'], ['Suket RT/RW', 'Surat keterangan domisili'], ['Lainnya', 'Identitas/surat lain']];
 
   const [kode, token] = decodeURIComponent(location.hash.slice(1)).split('.');
   let data = null, sibuk = false, cadanganBaru = false, desaBaru = null, desaSemua = [], timTerbuka = false;
   const berkas = {}; // berkas[urutan][kunci] = { f: File, path: '' } — path tersimpan supaya Simpan ulang tidak mengunggah lagi
   const bisaUbahTim = () => Boolean(DB.ubahAda && data && data.wa_kapten !== undefined);
+  // Migrasi 16: nomor WA tiap pemain (2–6) + bukti twibbon 1 per tim. Wajib untuk tim form v2 (daftar sejak 18 Nov).
+  const adaV16 = () => Boolean(bisaUbahTim() && data.form_versi !== undefined);
+  const wajibV2 = () => adaV16() && data.form_versi >= 2;
+  let twBaru = null; // { f: File, path: '' }
 
   const galat = (t) => { $('#salah').textContent = t || ''; $('#salah').hidden = !t; };
   const teksGalat = (e) => { const k = Object.keys(PESAN_GALAT).find((x) => String(e && e.message).includes(x)); return k ? PESAN_GALAT[k] : ''; };
@@ -58,7 +64,7 @@
     try { data = await DB.ubahLihat(kode, token); }
     catch (e) { gagalMuat(teksGalat(e) || 'Data tim gagal dimuat. Cek koneksi lalu muat ulang halaman ini.'); return; }
     Object.keys(berkas).forEach((k) => delete berkas[k]);
-    cadanganBaru = false; desaBaru = null; timTerbuka = false;
+    cadanganBaru = false; desaBaru = null; timTerbuka = false; twBaru = null;
     gambar(kabarSimpan);
   }
 
@@ -102,6 +108,11 @@
           </div>
           <small>Semua pemain harus berdomisili di kabupaten/kota yang sama dengan desa ini.</small></div>
         </details></fieldset>` : '';
+    if (adaV16()) $('#pb-data-tim').insertAdjacentHTML('beforeend', `<fieldset class="blok-pemain pb-pemain pb-twibbon${!d.ada_twibbon && wajibV2() ? ' ada-catatan' : ''}"><legend>Bukti twibbon tim</legend>
+        <p class="bantu">${d.ada_twibbon ? 'Screenshot post twibbon sudah ada. Unggah lagi hanya kalau mau mengganti.' : wajibV2() ? '<b>Belum ada.</b> Wajib 1 per tim: post foto/video bertwibbon di story atau feed Instagram dengan tag @esportsdesa.official, lalu unggah screenshot-nya.' : 'Tidak wajib untuk tim yang mendaftar sebelum 18 November, tapi boleh ditambahkan.'}
+          <a href="twibbon.html" target="_blank" rel="noopener">Pasang foto di twibbon</a> · <a href="unduhan/twibbon-tednas-2027.png" download>unduh bingkainya</a></p>
+        <label class="jatuhan"><input type="file" data-tw accept="image/jpeg,image/png">Screenshot post twibbon<small>Story/feed yang memperlihatkan twibbon dan tag @esportsdesa.official</small><span id="pb-tw-status">${twBaru ? `<span class="berkas-ok">${esc(twBaru.f.name)}</span>` : ''}</span></label>
+      </fieldset>`);
 
     const per = new Map(saran.pemain.map((p) => [p.urutan, p.saran]));
     const adaCadangan = d.pemain.some((p) => p.urutan === 6);
@@ -114,6 +125,8 @@
         <details ${s.length ? 'open' : ''}><summary>${s.length ? 'Perbaiki data pemain ini' : 'Ganti data pemain ini'}</summary>
           <label class="isian${tanda('nama')}">Nama lengkap sesuai kartu identitas
             <input type="text" data-nama maxlength="80" value="${esc(p.nama)}" autocomplete="off"></label>
+          ${adaV16() && p.urutan > 1 ? `<label class="isian">Nomor WhatsApp pemain
+            <input type="tel" data-wa inputmode="tel" maxlength="20" value="${esc(waTampil(p.wa))}" placeholder="08xxxxxxxxxx" autocomplete="off">${wajibV2() ? '' : '<small>Boleh dikosongkan untuk tim yang mendaftar sebelum 18 November.</small>'}</label>` : ''}
           <label class="isian">Jenis kartu identitas
             <select data-jenis>${JENIS_DOK.map(([v, t]) => `<option value="${v}" ${p.dokumen_jenis === v ? 'selected' : ''}>${t}</option>`).join('')}</select></label>
           <div class="dua-unggah">${BERKAS.map(([kunci, , judul, ket, pdf]) => `<label class="jatuhan${tanda(kunci)}"><input type="file" data-file="${kunci}" accept="${pdf ? 'application/pdf,' : ''}image/jpeg,image/png">${esc(judul)}<small>${esc(kunci === 'izin' && p.ada_izin ? 'Sudah ada; unggah untuk mengganti' : ket)}</small><span data-status="${kunci}"></span></label>`).join('')}</div>
@@ -129,6 +142,7 @@
     return `<fieldset class="blok-pemain pb-pemain pb-baru" data-u="6" data-baru>
       <legend>${esc(SARAN.labelPemain(6))} baru</legend>
       <label class="isian">Nama lengkap sesuai kartu identitas<input type="text" data-nama maxlength="80" value="" autocomplete="off"></label>
+      ${adaV16() ? `<label class="isian">Nomor WhatsApp pemain${wajibV2() ? ' *' : ''}<input type="tel" data-wa inputmode="tel" maxlength="20" value="" placeholder="08xxxxxxxxxx" autocomplete="off"></label>` : ''}
       <label class="isian">Jenis kartu identitas<select data-jenis>${JENIS_DOK.map(([v, t]) => `<option value="${v}">${t}</option>`).join('')}</select></label>
       <div class="dua-unggah">${BERKAS.map(([kunci, , judul, ket, pdf, wajib]) => `<label class="jatuhan"><input type="file" data-file="${kunci}" accept="${pdf ? 'application/pdf,' : ''}image/jpeg,image/png">${esc(judul)}${wajib ? ' *' : ''}<small>${esc(ket)}</small><span data-status="${kunci}"></span></label>`).join('')}</div>
       <p class="bantu">Format surat izin: ${U.unduhIzin}</p>
@@ -178,12 +192,12 @@
   });
   // Menggambar ulang daftar pemain tanpa kehilangan isian yang sudah diketik.
   function simpanIsianLalu(f) {
-    const nilai = { tim: $('#pb-nama-tim')?.value, wa: $('#pb-wa')?.value, pemain: $$('[data-u]').map((b) => ({ u: b.dataset.u, baru: b.hasAttribute('data-baru'), nama: $('[data-nama]', b)?.value, jenis: $('[data-jenis]', b)?.value, hapus: $('[data-hapus]', b)?.checked })) };
+    const nilai = { tim: $('#pb-nama-tim')?.value, wa: $('#pb-wa')?.value, pemain: $$('[data-u]').map((b) => ({ u: b.dataset.u, baru: b.hasAttribute('data-baru'), nama: $('[data-nama]', b)?.value, jenis: $('[data-jenis]', b)?.value, waP: $('[data-wa]', b)?.value, hapus: $('[data-hapus]', b)?.checked })) };
     timTerbuka = Boolean($('#pb-data-tim details')?.open);
     f();
     if ($('#pb-nama-tim') && nilai.tim !== undefined) $('#pb-nama-tim').value = nilai.tim;
     if ($('#pb-wa') && nilai.wa !== undefined) $('#pb-wa').value = nilai.wa;
-    for (const p of nilai.pemain) { const b = $(`[data-u="${p.u}"]${p.baru ? '[data-baru]' : ':not([data-baru])'}`); if (!b) continue; if ($('[data-nama]', b)) $('[data-nama]', b).value = p.nama; if ($('[data-jenis]', b)) $('[data-jenis]', b).value = p.jenis; if ($('[data-hapus]', b)) $('[data-hapus]', b).checked = p.hapus; }
+    for (const p of nilai.pemain) { const b = $(`[data-u="${p.u}"]${p.baru ? '[data-baru]' : ':not([data-baru])'}`); if (!b) continue; if ($('[data-nama]', b)) $('[data-nama]', b).value = p.nama; if ($('[data-jenis]', b)) $('[data-jenis]', b).value = p.jenis; if ($('[data-wa]', b) && p.waP !== undefined) $('[data-wa]', b).value = p.waP; if ($('[data-hapus]', b)) $('[data-hapus]', b).checked = p.hapus; }
     ringkas();
   }
 
@@ -195,14 +209,19 @@
       if (nt !== data.nama_tim) tim.nama_tim = nt;
       if (waNormal(wa) !== data.wa_kapten) tim.wa = wa;
       if (desaBaru && desaBaru.desa_kode !== data.desa_kode) Object.assign(tim, desaBaru);
+      if (twBaru) tim.twibbon_path = twBaru.path || '(diunggah saat simpan)';
     }
     for (const blok of $$('[data-u]')) {
       const u = Number(blok.dataset.u), baru = blok.hasAttribute('data-baru'), p = data.pemain.find((x) => x.urutan === u);
       const x = { urutan: u };
       if ($('[data-hapus]', blok)?.checked) { ubah.push({ urutan: u, hapus: true }); continue; }
       const nama = $('[data-nama]', blok).value.trim(), jenis = $('[data-jenis]', blok).value;
-      if (baru) { Object.assign(x, { baru: true, nama, dokumen_jenis: jenis }); }
-      else { if (nama !== p.nama) x.nama = nama; if (jenis !== p.dokumen_jenis) x.dokumen_jenis = jenis; }
+      const waIn = $('[data-wa]', blok), waP = waIn ? waNormal(waIn.value) : undefined;
+      if (baru) { Object.assign(x, { baru: true, nama, dokumen_jenis: jenis }); if (waP !== undefined) x.wa = waP; }
+      else {
+        if (nama !== p.nama) x.nama = nama; if (jenis !== p.dokumen_jenis) x.dokumen_jenis = jenis;
+        if (waP !== undefined && (waP || null) !== (p.wa || null)) x.wa = waP;
+      }
       for (const [kunci, kolom] of BERKAS) if (berkas[u] && berkas[u][kunci]) unggah.push({ x, u, kunci, kolom });
       if (baru || Object.keys(x).length > 1 || unggah.some((t) => t.x === x)) ubah.push(x);
     }
@@ -215,6 +234,17 @@
   }
 
   $('#pb-form').addEventListener('change', async (e) => {
+    if (e.target.matches('[data-tw]')) {
+      const f = e.target.files && e.target.files[0]; if (!f) return;
+      if (!FOTO.includes(f.type)) { galat('Screenshot twibbon harus JPG atau PNG.'); return; }
+      if (f.size > MAKS_FOTO_ASLI) { galat('Gambarnya terlalu besar. Coba screenshot ulang.'); return; }
+      galat(''); $('#pb-tw-status').textContent = 'Menyiapkan...';
+      const siap = await U.kecilkanFoto(f);
+      if (siap.size > MAKS_BERKAS) { $('#pb-tw-status').textContent = ''; galat('Berkasnya masih lebih dari 5 MB. Coba screenshot ulang.'); return; }
+      twBaru = { f: siap, path: '' };
+      $('#pb-tw-status').innerHTML = `<span class="berkas-ok">${esc(siap.name)}</span>`;
+      ringkas(); return;
+    }
     const blok = e.target.closest('[data-u]'); if (!blok) return;
     if (e.target.matches('[data-jenis], [data-hapus]')) { ringkas(); return; }
     const kunci = e.target.dataset.file, f = e.target.files && e.target.files[0];
@@ -244,6 +274,8 @@
     if (!ubah.length && !Object.keys(tim).length) { galat('Belum ada yang diubah. Ganti data atau unggah berkas baru dulu.'); return; }
     if (tim.nama_tim !== undefined && tim.nama_tim.length < 2) { galat(PESAN_GALAT.NAMA_TIM_TIDAK_VALID); return; }
     if (tim.wa !== undefined && !/^628\d{7,12}$/.test(waNormal(tim.wa))) { galat(PESAN_GALAT.WA_TIDAK_VALID); return; }
+    const waSalah = ubah.find((x) => x.wa !== undefined && ((x.wa && !/^628\d{7,12}$/.test(x.wa)) || (!x.wa && wajibV2())));
+    if (waSalah) { galat(`Nomor WhatsApp ${SARAN.labelPemain(waSalah.urutan).toLowerCase()} ${waSalah.wa ? 'belum benar. Contoh: 0812xxxxxxx.' : 'wajib diisi.'}`); return; }
     const pendek = ubah.find((x) => x.nama !== undefined && x.nama.length < 2);
     if (pendek) { galat(`Nama ${SARAN.labelPemain(pendek.urutan).toLowerCase()} minimal 2 huruf.`); return; }
     const baru = ubah.find((x) => x.baru);
@@ -269,6 +301,12 @@
       };
       await Promise.all([kerja(), kerja()]);
       for (const t of unggah) t.x[t.kolom] = berkas[t.u][t.kunci].path;
+      if (twBaru) {
+        if (!twBaru.path) {
+          try { twBaru.path = await DB.unggahDokumen(twBaru.f); } catch (err) { err.berkas = 'screenshot post twibbon'; throw err; }
+        }
+        tim.twibbon_path = twBaru.path;
+      }
       tombol.textContent = 'Menyimpan...';
       await DB.ubahSimpan(data.kode, token, ubah, Object.keys(tim).length ? tim : null);
       await muat(true);

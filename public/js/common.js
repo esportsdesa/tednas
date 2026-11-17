@@ -39,7 +39,7 @@
   /* Peraturan resmi dari panitia. Dipakai di halaman Peraturan dan langkah pertama formulir. */
   U.PERATURAN = [
     ['A. Kriteria Umum', [
-      'WNI dan berdomisili di desa yang diwakili, dibuktikan dengan KTP/KK atau surat keterangan domisili.',
+      'WNI dan berdomisili di kabupaten/kota yang sama dengan desa yang diwakili, dibuktikan dengan kartu identitas atau surat yang memuat alamat/domisili.',
       'Berusia 15–30 tahun per 15 Januari 2027. Peserta di bawah 17 tahun wajib mendapat izin orang tua/wali.',
       'Bersedia mematuhi seluruh peraturan turnamen.',
       'Setiap pemain wajib mengikuti (follow) akun Instagram @esportsdesa.official dan @ditjen_ppdt.']],
@@ -54,11 +54,12 @@
       'Dilarang menggunakan akun pinjaman, joki, atau cheat.',
       'Menyiapkan perangkat dan koneksi internet secara mandiri untuk babak daring.']],
     ['D. Dokumen Pendaftaran', [
-      'KTP/KK atau kartu pelajar setiap pemain.',
+      'Kartu identitas setiap pemain: KTP, KK, KIA, SIM, kartu pelajar, surat keterangan domisili, atau identitas/surat lain yang menunjukkan nama, tanggal lahir, dan alamat/domisili. NIK boleh disensor.',
       'Surat izin orang tua/wali bagi peserta di bawah 17 tahun.',
       'Tangkapan layar profil akun gim.',
       'Tangkapan layar bukti follow Instagram @esportsdesa.official dan @ditjen_ppdt setiap pemain.',
-      'Identitas dan nomor WhatsApp kapten tim.']],
+      'Nomor WhatsApp kapten dan setiap pemain.',
+      'Tangkapan layar post twibbon TEDNas 2027 di story atau feed Instagram dengan tag @esportsdesa.official, cukup 1 per tim.']],
     ['E. Larangan dan Sanksi', [
       'Pemain profesional yang masih terikat kontrak atau mantan pemain profesional (MPL, MDL, dan Liga Esports Nasional) tidak diperkenankan mengikuti turnamen.',
       'Pelanggaran berupa pemalsuan data, ketidaksesuaian domisili, joki, cheat, dan pengaturan skor dapat dikenai diskualifikasi.',
@@ -66,7 +67,7 @@
   ];
   U.unduhIzin = '<a href="unduhan/surat-izin-orang-tua.pdf" download>PDF untuk dicetak</a> · <a href="unduhan/surat-izin-orang-tua.docx" download>Word untuk diisi</a> · <a href="unduhan/contoh-surat-izin-orang-tua.pdf" target="_blank" rel="noopener">lihat contoh</a>';
   U.peraturanHtml = () => U.PERATURAN.map(([j, isi]) => `<h3>${U.esc(j)}</h3><ul>${isi.map((x) => `<li>${U.esc(x)}</li>`).join('')}</ul>`
-    + (j.startsWith('D.') ? `<p class="unduh-izin">Format surat izin orang tua/wali: ${U.unduhIzin}</p>` : '')).join('');
+    + (j.startsWith('D.') ? `<p class="unduh-izin">Format surat izin orang tua/wali: ${U.unduhIzin}</p><p class="unduh-izin">Twibbon TEDNas 2027: <a href="twibbon.html">pasang foto di twibbon</a> · <a href="unduhan/twibbon-tednas-2027.png" download>unduh bingkainya (untuk video)</a></p>` : '')).join('');
 
   /* Foto diperkecil di HP pengguna (sisi terpanjang 1280 px, JPEG 0,72) sebelum diunggah: hemat kuota dan
      penyimpanan Drive. Dipakai halaman daftar dan halaman perbaikan berkas. PDF & yang gagal dibaca: apa adanya. */

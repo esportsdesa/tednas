@@ -416,3 +416,23 @@ li.ai-ok { color: var(--hijau); list-style: "✓  "; }
 .pb-hapus { display: flex; gap: 8px; align-items: center; font-weight: 700; font-size: 14px; color: var(--merah); margin: 4px 0 10px; }
 .pb-baru { border-top: 2px solid var(--magenta); }
 .pb-baru legend { color: var(--magenta); }
+
+/* Migrasi 16: WA tiap pemain di samping nama + bukti twibbon 1 per tim + halaman pembuat twibbon */
+.pemain-wa { display: grid; grid-template-columns: 3fr 2fr; gap: 0 12px; }
+@media (max-width: 560px) { .pemain-wa { grid-template-columns: 1fr; gap: 0; } }
+.blok-twibbon { border-top: 2px solid var(--emas); margin-top: 10px; }
+.langkah-twibbon { margin: 6px 0 10px; padding-left: 20px; font-size: 14px; line-height: 1.5; }
+.langkah-twibbon li { margin-bottom: 4px; }
+.twibbon-tombol { display: flex; flex-wrap: wrap; gap: 10px; margin: 0 0 12px; }
+.pb-twibbon .bantu a { font-weight: 700; }
+.tw-kerja { display: grid; grid-template-columns: minmax(0, 360px) minmax(0, 1fr); gap: 28px; align-items: start; max-width: 860px; margin: 0 auto; }
+@media (max-width: 720px) { .tw-kerja { grid-template-columns: 1fr; } }
+.tw-pratinjau { position: relative; width: 100%; max-width: 360px; margin: 0 auto; }
+.tw-pratinjau canvas { display: block; width: 100%; height: auto; border-radius: 6px; box-shadow: 0 8px 28px rgba(22, 16, 63, .25); touch-action: none; cursor: grab; background: #16103f; }
+.tw-pratinjau canvas:active { cursor: grabbing; }
+.tw-kosong { position: absolute; left: 0; right: 0; top: 42%; text-align: center; color: #fff; font-weight: 700; pointer-events: none; text-shadow: 0 1px 6px rgba(0, 0, 0, .6); }
+.tw-kosong small { font-weight: 500; }
+.tw-alat { display: grid; gap: 12px; }
+.tw-alat input[type=range] { width: 100%; accent-color: var(--ungu); }
+.tw-pilih { cursor: pointer; justify-self: start; }
+.tw-tombol { display: flex; flex-wrap: wrap; gap: 10px; }

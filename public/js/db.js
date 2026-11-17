@@ -57,7 +57,8 @@
           p_prov_kode: d.prov_kode, p_provinsi: d.provinsi, p_kab_kode: d.kab_kode, p_kabupaten: d.kabupaten,
           p_kecamatan: d.kecamatan, p_desa_kode: d.desa_kode, p_desa: d.desa,
           p_pemain: d.pemain, p_captcha: d.captcha,
-          ...(d.komunitas ? { p_komunitas: d.komunitas } : {})
+          ...(d.komunitas ? { p_komunitas: d.komunitas } : {}),
+          p_twibbon: d.twibbon || null // migrasi 16: bukti twibbon 1 per tim
         }));
       },
       /* Komunitas ToT (migrasi 13) */
@@ -226,12 +227,14 @@
         if (!set.pendaftaran_buka) salah('PENDAFTARAN_TUTUP');
         if (set.buka_mulai && Date.now() < new Date(set.buka_mulai).getTime()) salah('PENDAFTARAN_BELUM_DIBUKA');
         if (!/^628\d{7,12}$/.test(wa)) salah('WA_TIDAK_VALID');
+        if (d.pemain.slice(1).some((p) => !/^628\d{7,12}$/.test(String(p.wa || '')))) salah('WA_PEMAIN_TIDAK_VALID');
+        if (!d.twibbon) salah('TWIBBON_TIDAK_ADA');
         if (t.some((x) => x.wa_kapten === wa)) salah('WA_SUDAH_ADA');
         const seq = baca('seq', 0) + 1; tulis('seq', seq);
         const kode = 'TED-' + String(seq).padStart(5, '0');
         const semuaKom = baca('komunitas', []);
         const kom = semuaKom.find((k) => k.id === d.komunitas && k.aktif) || semuaKom.find((k) => k.bawaan);
-        t.push({ id: acakId(), kode, nama_tim: d.nama_tim, nama_kapten: d.pemain[0].nama, wa_kapten: wa, prov_kode: d.prov_kode, provinsi: d.provinsi, kab_kode: d.kab_kode, kabupaten: d.kabupaten, kecamatan: d.kecamatan, desa_kode: d.desa_kode, desa: d.desa, pemain: d.pemain.map((p, i) => ({ ...p, urutan: i + 1 })), status: 'menunggu', komunitas_id: kom ? kom.id : null, created_at: new Date().toISOString() });
+        t.push({ id: acakId(), kode, nama_tim: d.nama_tim, nama_kapten: d.pemain[0].nama, wa_kapten: wa, prov_kode: d.prov_kode, provinsi: d.provinsi, kab_kode: d.kab_kode, kabupaten: d.kabupaten, kecamatan: d.kecamatan, desa_kode: d.desa_kode, desa: d.desa, pemain: d.pemain.map((p, i) => ({ ...p, urutan: i + 1 })), twibbon_path: d.twibbon, form_versi: 2, status: 'menunggu', komunitas_id: kom ? kom.id : null, created_at: new Date().toISOString() });
         tulis('tim', t); return { kode, komunitas: kom ? kom.id : null };
       },
       async komunitasInfo(id) { const k = baca('komunitas', []).find((x) => x.id === id && x.aktif); return k ? { id: k.id, nama: k.nama, kota: k.kota, provinsi: k.provinsi } : null; },
@@ -268,7 +271,9 @@
       ubahAda: true,
       async ubahLihat(kode, token) {
         const t = tim().find((x) => x.kode === kode && token === kode.toLowerCase()); if (!t) throw new Error('TAUTAN_TIDAK_SAH');
-        return { ...(await this.perbaikiLihat(kode, token)), wa_kapten: t.wa_kapten, prov_kode: t.prov_kode, kab_kode: t.kab_kode, kecamatan: t.kecamatan, desa_kode: t.desa_kode };
+        return { ...(await this.perbaikiLihat(kode, token)), wa_kapten: t.wa_kapten, prov_kode: t.prov_kode, kab_kode: t.kab_kode, kecamatan: t.kecamatan, desa_kode: t.desa_kode,
+          form_versi: t.form_versi || 1, ada_twibbon: !!t.twibbon_path,
+          pemain: t.pemain.map((p) => ({ urutan: p.urutan, nama: p.nama, dokumen_jenis: p.dokumen_jenis, ada_izin: !!p.izin_path, wa: p.urutan === 1 ? t.wa_kapten : (p.wa || null) })) };
       },
       async ubahSimpan(kode, token, ubah, ubahTim) {
         const t = tim().find((x) => x.kode === kode && token === kode.toLowerCase()); if (!t) throw new Error('TAUTAN_TIDAK_SAH');
@@ -277,6 +282,10 @@
           const { wa, ...lain } = ubahTim; Object.assign(t, lain);
         }
         for (const u of ubah) {
+          if (u.wa !== undefined) {
+            if (u.urutan === 1) delete u.wa; // pemain 1 = nomor kapten
+            else { let w = String(u.wa || '').replace(/\D/g, ''); if (w.startsWith('08')) w = '62' + w.slice(1); if ((w && !/^628\d{7,12}$/.test(w)) || (!w && (t.form_versi || 1) >= 2)) throw new Error('WA_PEMAIN_TIDAK_VALID'); u.wa = w || null; }
+          }
           if (u.hapus) { if (u.urutan !== 6) throw new Error('HANYA_CADANGAN'); t.pemain = t.pemain.filter((p) => p.urutan !== 6); continue; }
           if (u.baru) { if (u.urutan !== 6) throw new Error('HANYA_CADANGAN'); if (t.pemain.some((p) => p.urutan === 6)) throw new Error('CADANGAN_SUDAH_ADA'); const { baru, ...isi } = u; t.pemain.push({ ...isi, nama: isi.nama.trim() }); continue; }
           t.pemain = t.pemain.map((p) => (p.urutan === u.urutan ? { ...p, ...u, nama: (u.nama || p.nama).trim() } : p));

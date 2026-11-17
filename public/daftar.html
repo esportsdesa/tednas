@@ -16,7 +16,7 @@
 <body>
 <div class="halaman-kepala"><div class="isi">
   <h1>DAFTARKAN TIM DESAMU</h1>
-  <p>Siapkan nama semua pemain, nomor WA kapten, kartu identitas, screenshot profil Mobile Legends, dan screenshot bukti follow Instagram @esportsdesa.official dan @ditjen_ppdt tiap pemain, serta surat izin untuk pemain di bawah 17 tahun.</p>
+  <p>Siapkan nama dan nomor WhatsApp semua pemain, kartu identitas, screenshot profil Mobile Legends, dan screenshot bukti follow Instagram @esportsdesa.official dan @ditjen_ppdt tiap pemain, surat izin untuk pemain di bawah 17 tahun, serta 1 screenshot post twibbon tim di Instagram.</p>
 </div></div>
 
 <main class="halaman">
@@ -65,26 +65,57 @@
           <input type="text" id="nama-tim" maxlength="60" autocomplete="off"></label>
         <label class="isian">Nama pemain 1 (kapten)
           <input type="text" id="pemain-1" maxlength="80" autocomplete="off"></label>
-        <label class="isian">Nama pemain 2
-          <input type="text" id="pemain-2" maxlength="80" autocomplete="off"></label>
-        <label class="isian">Nama pemain 3
-          <input type="text" id="pemain-3" maxlength="80" autocomplete="off"></label>
-        <label class="isian">Nama pemain 4
-          <input type="text" id="pemain-4" maxlength="80" autocomplete="off"></label>
-        <label class="isian">Nama pemain 5
-          <input type="text" id="pemain-5" maxlength="80" autocomplete="off"></label>
-        <label class="isian">Nama pemain 6 (cadangan)
-          <input type="text" id="pemain-6" maxlength="80" autocomplete="off">
-          <small>Boleh dikosongkan kalau tidak ada cadangan.</small></label>
         <label class="isian">No. HP (WhatsApp) kapten
           <input type="tel" id="wa" inputmode="tel" placeholder="08xxxxxxxxxx" autocomplete="tel" maxlength="20">
           <small>Jadwal dan lawan dikabari lewat nomor ini. Tidak tampil di website.</small></label>
+        <div class="pemain-wa">
+          <label class="isian">Nama pemain 2
+            <input type="text" id="pemain-2" maxlength="80" autocomplete="off"></label>
+          <label class="isian">WhatsApp pemain 2
+            <input type="tel" id="wa-pemain-2" inputmode="tel" placeholder="08xxxxxxxxxx" maxlength="20"></label>
+        </div>
+        <div class="pemain-wa">
+          <label class="isian">Nama pemain 3
+            <input type="text" id="pemain-3" maxlength="80" autocomplete="off"></label>
+          <label class="isian">WhatsApp pemain 3
+            <input type="tel" id="wa-pemain-3" inputmode="tel" placeholder="08xxxxxxxxxx" maxlength="20"></label>
+        </div>
+        <div class="pemain-wa">
+          <label class="isian">Nama pemain 4
+            <input type="text" id="pemain-4" maxlength="80" autocomplete="off"></label>
+          <label class="isian">WhatsApp pemain 4
+            <input type="tel" id="wa-pemain-4" inputmode="tel" placeholder="08xxxxxxxxxx" maxlength="20"></label>
+        </div>
+        <div class="pemain-wa">
+          <label class="isian">Nama pemain 5
+            <input type="text" id="pemain-5" maxlength="80" autocomplete="off"></label>
+          <label class="isian">WhatsApp pemain 5
+            <input type="tel" id="wa-pemain-5" inputmode="tel" placeholder="08xxxxxxxxxx" maxlength="20"></label>
+        </div>
+        <div class="pemain-wa">
+          <label class="isian">Nama pemain 6 (cadangan)
+            <input type="text" id="pemain-6" maxlength="80" autocomplete="off"></label>
+          <label class="isian">WhatsApp pemain 6
+            <input type="tel" id="wa-pemain-6" inputmode="tel" placeholder="08xxxxxxxxxx" maxlength="20"></label>
+        </div>
+        <p class="bantu">Pemain cadangan boleh dikosongkan kalau tidak ada. Nomor WhatsApp tiap pemain hanya untuk panitia, tidak tampil di website.</p>
       </section>
 
       <section data-langkah="3" hidden>
         <h2>Tinggal berkasnya</h2>
         <p class="bantu lead"><b>Semua pemain wajib mengunggah, bukan cuma kapten.</b> Tiap pemain butuh kartu identitas, screenshot profil Mobile Legends, dan screenshot bukti follow <a href="https://www.instagram.com/esportsdesa.official/" target="_blank" rel="noopener">@esportsdesa.official</a> serta <a href="https://www.instagram.com/ditjen_ppdt/" target="_blank" rel="noopener">@ditjen_ppdt</a> (halaman profilnya yang memperlihatkan tombol <i>Following</i>/<i>Mengikuti</i>). Pemain di bawah 17 tahun juga butuh surat izin orang tua/wali.</p>
         <div id="pemain-berkas"></div>
+        <fieldset class="blok-pemain blok-twibbon">
+          <legend>Bukti twibbon tim (cukup 1 per tim)</legend>
+          <ol class="langkah-twibbon">
+            <li>Pasang foto tim/pemain di twibbon TEDNas 2027, atau unduh bingkainya untuk video.</li>
+            <li>Post di <b>story atau feed Instagram</b> dan <b>tag @esportsdesa.official</b>.</li>
+            <li>Screenshot postingannya, lalu unggah di sini.</li>
+          </ol>
+          <p class="twibbon-tombol"><a class="btn btn-emas btn-kecil" href="twibbon.html" target="_blank" rel="noopener">Pasang foto di twibbon</a>
+            <a class="btn btn-kecil" href="unduhan/twibbon-tednas-2027.png" download>Unduh bingkai twibbon</a></p>
+          <label class="jatuhan"><input type="file" id="tw-file" accept="image/jpeg,image/png">Unggah screenshot post twibbon<small>Story/feed yang memperlihatkan twibbon dan tag @esportsdesa.official</small><span id="tw-status"></span></label>
+        </fieldset>
         <p class="bantu">Berkas ini hanya dibuka panitia untuk verifikasi, tidak tampil di website. Foto otomatis diperkecil supaya hemat kuota.</p>
       </section>
 

@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Twibbon TEDNas 2027 | Kami Siap Juara</title>
+<meta name="description" content="Pasang foto tim desamu di twibbon Turnamen Esports Desa Nasional 2027, lalu post di Instagram dengan tag @esportsdesa.official.">
+<link rel="icon" href="favicon.ico" sizes="48x48">
+<link rel="icon" type="image/png" sizes="192x192" href="img/ikon-192.png">
+<link rel="apple-touch-icon" href="img/ikon-180.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=League+Gothic&family=Montserrat:wght@500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+<script defer src="/_vercel/insights/script.js"></script>
+</head>
+<body>
+<div class="halaman-kepala"><div class="isi">
+  <h1>TWIBBON TEDNAS 2027</h1>
+  <p>Pasang foto tim atau pemainmu di twibbon <b>Kami Siap Juara</b>, post di story atau feed Instagram, dan tag <b>@esportsdesa.official</b>. Screenshot postingannya dipakai sebagai bukti saat mendaftar (cukup 1 per tim).</p>
+</div></div>
+
+<main class="halaman">
+  <div class="tw-kerja">
+    <div class="tw-pratinjau">
+      <canvas id="tw-kanvas" width="1080" height="1920" aria-label="Pratinjau twibbon"></canvas>
+      <p class="tw-kosong" id="tw-kosong">Pilih foto dulu.<br><small>Foto tampil di bagian tengah, di balik bingkai.</small></p>
+    </div>
+    <div class="tw-alat">
+      <label class="btn btn-emas tw-pilih"><input type="file" id="tw-foto" accept="image/*" hidden>Pilih foto</label>
+      <label class="isian">Perbesar / perkecil
+        <input type="range" id="tw-zoom" min="100" max="300" value="100" disabled></label>
+      <p class="bantu">Geser foto langsung di pratinjau untuk mengatur posisinya.</p>
+      <div class="tw-tombol">
+        <button type="button" class="btn" id="tw-unduh" disabled>Unduh hasil</button>
+        <button type="button" class="btn btn-garis-gelap" id="tw-bagikan" hidden disabled>Bagikan ke Instagram</button>
+      </div>
+      <ol class="langkah-twibbon">
+        <li>Unduh hasilnya, lalu post di <b>story atau feed Instagram</b>.</li>
+        <li><b>Tag @esportsdesa.official</b> di postingan itu.</li>
+        <li>Screenshot postingannya (tag-nya harus terlihat), lalu unggah di <a href="daftar.html">formulir pendaftaran</a> atau halaman ubah data tim.</li>
+      </ol>
+      <p class="bantu">Mau pakai video? <a href="unduhan/twibbon-tednas-2027.png" download>Unduh bingkainya saja (PNG transparan, 1080×1920)</a>, lalu tempel di atas videomu pakai aplikasi edit video.</p>
+    </div>
+  </div>
+</main>
+
+<script src="js/config.js"></script>
+<script src="js/common.js"></script>
+<script src="js/twibbon.js"></script>
+</body>
+</html>

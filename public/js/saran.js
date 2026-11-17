@@ -70,6 +70,14 @@
       if (/tidak terlihat/.test(t)) return { kolom: k, teks: `Screenshot follow belum menampilkan akun @${a}. ${CARA_FOLLOW(a)}` };
       return { kolom: k, teks: `Status follow @${a} belum jelas. ${CARA_FOLLOW(a)}` };
     }
+    if (b === 'twibbon') {
+      const cara = 'Pasang foto di twibbon (esportsdesa.id/twibbon), post di story atau feed Instagram dengan tag @esportsdesa.official, lalu screenshot postingannya dan unggah lewat tautan ubah data.';
+      if (/belum diunggah/.test(t)) return { kolom: 'twibbon', teks: `Screenshot post twibbon tim belum diunggah (cukup 1 per tim). ${cara}` };
+      if (/bukan tangkapan layar Instagram/.test(t)) return { kolom: 'twibbon', teks: `Bukti twibbon bukan screenshot Instagram. ${cara}` };
+      if (/^Twibbon .*tidak terlihat/.test(t)) return { kolom: 'twibbon', teks: `Twibbon TEDNas 2027 tidak terlihat di postingan. ${cara}` };
+      if (/^Tag .*tidak terlihat/.test(t)) return { kolom: 'twibbon', teks: 'Tag @esportsdesa.official belum terlihat di postingan twibbon. Tag akunnya di postingan itu, lalu screenshot sampai tag-nya terlihat dan unggah lewat tautan ubah data.' };
+      return { kolom: 'twibbon', teks: `Screenshot post twibbon tidak terbaca. ${cara}` };
+    }
     if (b === 'nama_tim') return { kolom: null, teks: 'Nama tim dinilai mungkin mengandung unsur SARA, pornografi, atau politik praktis. Balas pesan ini dengan usulan nama tim yang baru.' };
     return { kolom: k, teks: t };
   }

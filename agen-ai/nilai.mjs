@@ -103,6 +103,20 @@ export function tanyaIzin(nama) {
   };
 }
 
+/** Bukti twibbon tim (migrasi 16, 1 per tim): screenshot post story/feed Instagram bertwibbon dengan tag @esportsdesa.official. */
+export function tanyaTwibbon() {
+  return {
+    prompt: `Ini tangkapan layar yang dikirim sebagai bukti tim sudah memposting twibbon Turnamen Esports Desa Nasional 2027 di Instagram (story atau feed) dengan tag @esportsdesa.official.
+Twibbon itu bingkai foto tegak: di bagian bawah ada burung elang/garuda emas besar dengan tulisan besar "KAMI SIAP JUARA", di pojok atas ada logo-logo kementerian. Foto/video orang ada di tengah bingkai.
+- instagram: true bila ini tangkapan layar aplikasi atau situs Instagram (story, postingan feed, atau reels).
+- jenis: "story", "feed", atau "lain".
+- twibbon_terlihat: true bila bingkai twibbon itu (elang emas dan/atau tulisan "KAMI SIAP JUARA") terlihat di postingan.
+- tag_terlihat: true bila tulisan @esportsdesa.official (atau esportsdesa.official) terlihat sebagai tag, mention, stiker, atau keterangan di postingan itu.
+- akun_pemosting: username akun yang memposting (tanpa @), kosong bila tidak terlihat.`,
+    format: obj({ instagram: B, jenis: { type: "string", enum: ["story", "feed", "lain"] }, twibbon_terlihat: B, tag_terlihat: B, akun_pemosting: S }),
+  };
+}
+
 export function tanyaNamaTim(namaTim) {
   return {
     prompt: `Nama tim turnamen esports desa: "${namaTim}". Nama tim bebas, asal tidak mengandung SARA, pornografi, atau politik praktis.
@@ -255,6 +269,7 @@ export const samarkanNik = (nik) => { const n = nikBersih(nik); return n.length 
 /**
  * @param tim     paket tim (tednas_ai_antre): nama_tim, prov_kode, provinsi, kab_kode, kabupaten, desa, pemain[]
  * @param baca    { [urutan]: { identitas, profil_ml, follow_esports_path, follow_ppdt_path, izin } } hasil bacaan AI;
+ *                baca[0] = { twibbon } bacaan bukti twibbon tim (migrasi 16);
  *                tiap entri bisa { galat: "…" } (berkas tak ada / tak terbaca) atau undefined (tak diunggah)
  * @param namaTim hasil tanyaNamaTim (boleh null)
  * @param sha     { [urutan]: { kolom: sha } } untuk berkas sama dipakai dua kali oleh satu pemain
@@ -380,6 +395,17 @@ export function nilaiTim(tim, baca, namaTim, sha = {}) {
 
   // Tim: nama bebas, hanya dicek kepantasannya (SARA/pornografi/politik praktis).
   if (namaTim && namaTim.pantas === false) timButir.push({ b: "nama_tim", s: "cek", t: `Nama tim mungkin mengandung SARA/pornografi/politik praktis: ${namaTim.alasan || "-"}` });
+
+  // Tim: bukti twibbon (migrasi 16). Wajib untuk tim form v2 (daftar sejak 18 Nov 2026); tim lama dicek bila mengunggahnya.
+  if (tim.twibbon_path || (tim.form_versi || 1) >= 2) {
+    const tw = (baca[0] || {}).twibbon, butir = (s, t) => timButir.push({ b: "twibbon", s, t });
+    if (!tim.twibbon_path) butir("cek", "Screenshot post twibbon belum diunggah.");
+    else if (!tw || tw.galat) butir("cek", tw?.galat || "Screenshot post twibbon tidak terbaca.");
+    else if (!tw.instagram) butir("cek", "Bukti twibbon bukan tangkapan layar Instagram.");
+    else if (!tw.twibbon_terlihat) butir("cek", "Twibbon TEDNas 2027 tidak terlihat di postingan.");
+    else if (!tw.tag_terlihat) butir("cek", "Tag @esportsdesa.official tidak terlihat di postingan twibbon.");
+    else butir("ok", `Post twibbon${tw.jenis && tw.jenis !== "lain" ? ` (${tw.jenis})` : ""} dengan tag @esportsdesa.official${tw.akun_pemosting ? ` oleh @${tw.akun_pemosting}` : ""}.`);
+  }
 
   const catatan = [...timButir.filter((x) => x.s === "cek").map((x) => x.t),
     ...pemain.flatMap((p) => p.butir.filter((x) => x.s === "cek").map((x) => `P${p.u} ${p.nama}: ${x.t}`))];

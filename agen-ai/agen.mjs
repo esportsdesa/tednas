@@ -264,9 +264,10 @@ export async function tanyaModel(q, gambar, f = fetch, opsi = {}) {
 
 /* ── Satu tim ─────────────────────────────────────────────────────────── */
 const KOLOM = ["dokumen_path", "profil_ml_path", "follow_esports_path", "follow_ppdt_path", "izin_path"];
-const KUNCI_BACA = { dokumen_path: "identitas", profil_ml_path: "profil_ml", follow_esports_path: "follow_esports_path", follow_ppdt_path: "follow_ppdt_path", izin_path: "izin" };
+const KUNCI_BACA = { dokumen_path: "identitas", profil_ml_path: "profil_ml", follow_esports_path: "follow_esports_path", follow_ppdt_path: "follow_ppdt_path", izin_path: "izin", twibbon_path: "twibbon" };
 
 function pertanyaan(kolom, p) {
+  if (kolom === "twibbon_path") return N.tanyaTwibbon();
   if (kolom === "dokumen_path") return N.tanyaIdentitas(p.dokumen_jenis, p.nama);
   if (kolom === "profil_ml_path") return N.tanyaProfilMl(p.nama);
   if (kolom === "izin_path") return N.tanyaIzin(p.nama);
@@ -291,6 +292,9 @@ const KOLOM_BUTIR = { identitas: "dokumen_path", profil_ml: "profil_ml_path", fo
  *  gambar yang terlalu besar untuk konteks 9b (bukan berkas hilang, tidak diunggah, atau berkas kembar). */
 export function berkasUlang(t, n, baca, berkas) {
   const ulang = [];
+  // Bukti twibbon tim yang ditolak 9b juga dibaca ulang model besar.
+  const tw = baca[0]?.twibbon;
+  if (n.rincian.tim.some((b) => b.b === "twibbon" && b.s === "cek") && tw && (!tw.galat || tw.besar) && berkas[0]?.twibbon_path) ulang.push({ u: 0, kolom: "twibbon_path" });
   for (const p of n.rincian.pemain) {
     const kolom = new Set(p.butir.filter((b) => b.s === "cek" && !/^Berkas yang sama persis/.test(b.t)).map((b) => KOLOM_BUTIR[b.b]).filter(Boolean));
     for (const k of kolom) {
@@ -314,25 +318,24 @@ export async function periksaTim(t, alat = {}) {
   const pemain = Object.fromEntries((t.pemain || []).map((p) => [p.urutan, p]));
   const umur = (u) => N.umurPada(N.lahirIdentitas(baca[u].identitas));
 
-  // 1. Ambil semua berkas (Web App Drive).
+  // 1. Ambil semua berkas (Web App Drive). Bukti twibbon tim (migrasi 16) disimpan sebagai "pemain 0".
   const ambil = [];
+  const ambilSatu = (u, kolom, path) => async () => {
+    try {
+      const b = await ambilBerkas(path, f);
+      if (b.tetap) { baca[u][KUNCI_BACA[kolom]] = { galat: b.tetap }; return; }
+      sha[u][kolom] = createHash("sha256").update(b.data).digest("hex").slice(0, 32);
+      berkas[u][kolom] = b; // PDF baru diubah ke gambar saat memang dibaca model (izin pemain dewasa tidak)
+    } catch (e) {
+      if (e.fatal) throw e;
+      if (tetap(e)) baca[u][KUNCI_BACA[kolom]] = { galat: e.message }; else sementara = e.message;
+    }
+  };
   for (const p of t.pemain || []) {
     baca[p.urutan] = {}; sha[p.urutan] = {}; berkas[p.urutan] = {};
-    for (const kolom of KOLOM) {
-      if (!p[kolom]) continue;
-      ambil.push(async () => {
-        try {
-          const b = await ambilBerkas(p[kolom], f);
-          if (b.tetap) { baca[p.urutan][KUNCI_BACA[kolom]] = { galat: b.tetap }; return; }
-          sha[p.urutan][kolom] = createHash("sha256").update(b.data).digest("hex").slice(0, 32);
-          berkas[p.urutan][kolom] = b; // PDF baru diubah ke gambar saat memang dibaca model (izin pemain dewasa tidak)
-        } catch (e) {
-          if (e.fatal) throw e;
-          if (tetap(e)) baca[p.urutan][KUNCI_BACA[kolom]] = { galat: e.message }; else sementara = e.message;
-        }
-      });
-    }
+    for (const kolom of KOLOM) if (p[kolom]) ambil.push(ambilSatu(p.urutan, kolom, p[kolom]));
   }
+  if (t.twibbon_path) { baca[0] = {}; sha[0] = {}; berkas[0] = {}; ambil.push(ambilSatu(0, "twibbon_path", t.twibbon_path)); }
   await berbarengan(ambil, 3);
 
   // Baca satu berkas dengan mesin m. Galat tetap (PDF rusak, gambar tak terbuka) dicatat; galat lain dilempar.
@@ -444,8 +447,8 @@ async function jalan(sekali) {
 
 async function coba(berkas, jenis, nama = "Pemain Uji") {
   const p = { nama, dokumen_jenis: "KTP" };
-  const kolom = { identitas: "dokumen_path", profil_ml: "profil_ml_path", follow_esports: "follow_esports_path", follow_ppdt: "follow_ppdt_path", izin: "izin_path" }[jenis];
-  if (!kolom) throw new Error("jenis: identitas|profil_ml|follow_esports|follow_ppdt|izin");
+  const kolom = { identitas: "dokumen_path", profil_ml: "profil_ml_path", follow_esports: "follow_esports_path", follow_ppdt: "follow_ppdt_path", izin: "izin_path", twibbon: "twibbon_path" }[jenis];
+  if (!kolom) throw new Error("jenis: identitas|profil_ml|follow_esports|follow_ppdt|izin|twibbon");
   const buf = readFileSync(berkas);
   const gambar = berkas.toLowerCase().endsWith(".pdf") ? await pdfKeGambar(buf) : [buf];
   const t0 = Date.now();
