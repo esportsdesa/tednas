@@ -29,7 +29,7 @@ uji("terverifikasi: undang ke grup bila kapten belum/tak diketahui di grup, inga
   assert.match(p, /TERVERIFIKASI/);
   assert.match(p, /Nomor kakak belum ada di grup WhatsApp peserta\. Masuk grup/);
   assert.ok(p.includes(GRUP));
-  assert.doesNotMatch(p, /perbaiki#/, "tanpa tautan perbaikan");
+  assert.match(p, /Kalau ada data tim yang perlu diubah.*\nhttps:\/\/esportsdesa\.id\/perbaiki#TED-00009\.tok/s, "tautan ubah data tetap ada (semua data bisa diubah)");
   const q = pesan(t, KOSONG, null, true);
   assert.match(q, /Kakak sudah ada di grup WhatsApp peserta\. Pastikan semua pemain juga sudah masuk/);
 });

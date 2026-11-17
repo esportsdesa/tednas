@@ -88,6 +88,22 @@ async function supabase(req, res, u) {
     const b = JSON.parse(isi);
     return kirim(200, b.p_id === 7 ? { id: 7, nama: "Esports Malang Raya", kota: "Kota Malang", provinsi: "JAWA TIMUR" } : null);
   }
+  // Migrasi 15: ubah semua data tim (halaman memakai ini lebih dulu).
+  if (u.pathname === "/sb/rest/v1/rpc/tednas_ubah_lihat") {
+    const b = JSON.parse(isi);
+    if (b.p_kode !== "TED-00001" || b.p_token !== TOKEN) return kirim(400, { code: "P0001", message: "TAUTAN_TIDAK_SAH" });
+    return kirim(200, { ...dataPerbaiki(), kecamatan: "Pakis", wa_kapten: "6281234567801", prov_kode: "35", kab_kode: "35.07", desa_kode: "35.07.18.2010" });
+  }
+  if (u.pathname === "/sb/rest/v1/rpc/tednas_ubah_tim") {
+    const b = JSON.parse(isi);
+    if (b.p_kode !== "TED-00001" || b.p_token !== TOKEN) return kirim(400, { code: "P0001", message: "TAUTAN_TIDAK_SAH" });
+    if (b.p_tim && b.p_tim.wa && b.p_tim.wa.replace(/\D/g, "").endsWith("7802")) return kirim(400, { code: "P0001", message: "WA_SUDAH_ADA" });
+    for (const p of b.p_pemain) for (const k of ["dokumen_path", "profil_ml_path", "follow_esports_path", "follow_ppdt_path", "izin_path"]) {
+      if (p[k] && !W.sahkan(p[k])) return kirim(400, { code: "P0001", message: "PROFIL_ML_TIDAK_ADA" });
+    }
+    perbaikan.push(b);
+    return kirim(200, { ok: true, diubah: 2 });
+  }
   if (u.pathname === "/sb/rest/v1/rpc/tednas_perbaiki_lihat") {
     const b = JSON.parse(isi);
     if (b.p_kode !== "TED-00001" || b.p_token !== TOKEN) return kirim(400, { code: "P0001", message: "TAUTAN_TIDAK_SAH" });
@@ -266,14 +282,61 @@ await uji("perbaikan oleh kapten: tautan dari WA → catatan per pemain → gant
   await halaman.fill("[data-u='3'] [data-nama]", "A Pemain Tiga");
   assert.equal(await halaman.textContent("#pb-ringkas"), "1 berkas baru, 2 pemain diubah");
   await halaman.click("#pb-simpan");
-  await halaman.waitForFunction(() => /Perbaikan tersimpan/.test(document.querySelector("#pb-kabar").textContent));
+  await halaman.waitForFunction(() => /Perubahan tersimpan/.test(document.querySelector("#pb-kabar").textContent));
   assert.equal(unggahan - awal, 1, "hanya berkas yang diganti yang diunggah");
   assert.equal(perbaikan.length, 1);
   const [p2, p3] = perbaikan[0].p_pemain;
   assert.equal(p2.urutan, 2); assert.ok(W.sahkan(p2.profil_ml_path), "path bertanda Web App"); assert.deepEqual(Object.keys(p2).sort(), ["profil_ml_path", "urutan"]);
   assert.deepEqual(p3, { urutan: 3, nama: "A Pemain Tiga" });
-  assert.match(await halaman.textContent("#pb-kabar"), /dicek ulang otomatis.*sebelum perbaikan/);
+  assert.match(await halaman.textContent("#pb-kabar"), /dicek ulang otomatis/);
+  assert.equal(perbaikan[0].p_tim, null, "data tim tidak berubah = p_tim kosong");
   assert.match(await halaman.getAttribute("#wa-grup-link", "href"), /^https:\/\/chat\.whatsapp\.com\//);
+});
+
+await uji("ubah data tim (migrasi 15): nama tim, WA kapten, ganti desa, tambah cadangan; WA bentrok dijelaskan", async () => {
+  await halaman.goto(`${ASAL}/perbaiki.html#TED-00001.${TOKEN}`);
+  await halaman.reload();
+  await halaman.waitForSelector("#pb-data-tim details");
+  await halaman.click("#pb-data-tim summary");
+  assert.equal(await halaman.inputValue("#pb-wa"), "081234567801", "nomor WA tampil dalam format 08");
+  await halaman.fill("#pb-nama-tim", "Garuda Mangliawan Baru");
+  await halaman.fill("#pb-wa", "0812-3456-7802");
+  // ganti desa: provinsi → kabupaten → cari → pilih
+  await halaman.click("#pb-ganti-desa");
+  await halaman.waitForFunction(() => document.querySelectorAll("#pb-prov option").length > 30);
+  await halaman.selectOption("#pb-prov", "35");
+  await halaman.waitForFunction(() => !document.querySelector("#pb-kab").disabled);
+  await halaman.selectOption("#pb-kab", "35.07");
+  await halaman.waitForFunction(() => !document.querySelector("#pb-cari-desa").disabled);
+  await halaman.fill("#pb-cari-desa", "asrikaton");
+  await halaman.click("#pb-daftar-desa [data-k='35.07.18.2013']");
+  assert.match(await halaman.textContent("#pb-desa-kini"), /Desa Asrikaton \(baru\).*Kec\. Pakis/s);
+  // tambah cadangan: semua berkas wajib
+  await halaman.click("#pb-tambah-cadangan");
+  await halaman.waitForSelector("[data-baru] [data-nama]");
+  assert.equal(await halaman.inputValue("#pb-nama-tim"), "Garuda Mangliawan Baru", "isian tim tidak hilang saat blok cadangan muncul");
+  await halaman.fill("[data-baru] [data-nama]", "Cadangan Baru");
+  await (await halaman.$("[data-baru] [data-file=dok]")).setInputFiles(PNG("cad-dok"));
+  await halaman.waitForSelector("[data-baru] [data-status=dok] .berkas-ok");
+  await halaman.click("#pb-simpan");
+  await halaman.waitForFunction(() => /belum lengkap: Profil Mobile Legends, Follow @esportsdesa\.official, Follow @ditjen_ppdt/.test(document.querySelector("#salah").textContent));
+  for (const k of ["ml", "ig1", "ig2"]) { await (await halaman.$(`[data-baru] [data-file=${k}]`)).setInputFiles(PNG(`cad-${k}`)); await halaman.waitForSelector(`[data-baru] [data-status=${k}] .berkas-ok`); }
+  assert.match(await halaman.textContent("#pb-ringkas"), /data tim, 4 berkas baru, 1 pemain diubah/);
+  // WA milik tim lain → pesan jelas, tidak tersimpan
+  const n = perbaikan.length;
+  await halaman.click("#pb-simpan");
+  await halaman.waitForFunction(() => /sudah dipakai kapten tim lain/.test(document.querySelector("#salah").textContent));
+  assert.equal(perbaikan.length, n);
+  // 400 dari penolakan WA yang disengaja bukan galat halaman.
+  for (let i = galatKonsol.length - 1; i >= 0; i--) if (/tednas_ubah_tim|status of 400/.test(galatKonsol[i])) galatKonsol.splice(i, 1);
+  await halaman.fill("#pb-wa", "0812 9999 0001");
+  await halaman.click("#pb-simpan");
+  await halaman.waitForFunction(() => /Perubahan tersimpan/.test(document.querySelector("#pb-kabar").textContent));
+  const b = perbaikan.at(-1);
+  assert.deepEqual(b.p_tim, { nama_tim: "Garuda Mangliawan Baru", wa: "0812 9999 0001", prov_kode: "35", provinsi: "Jawa Timur", kab_kode: "35.07", kabupaten: "Kabupaten Malang", kecamatan: "Pakis", desa_kode: "35.07.18.2013", desa: "Asrikaton" });
+  const cad = b.p_pemain.find((x) => x.baru);
+  assert.equal(cad.urutan, 6); assert.equal(cad.nama, "Cadangan Baru");
+  assert.ok(["dokumen_path", "profil_ml_path", "follow_esports_path", "follow_ppdt_path"].every((k) => W.sahkan(cad[k])), "berkas cadangan bertanda Web App");
 });
 
 await uji("tautan komunitas ToT: daftar?k=7 → spanduk komunitas → tercatat di pendaftaran; tetap diingat; tanpa halaman/menu ToT di situs", async () => {

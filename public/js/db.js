@@ -120,6 +120,21 @@
       async kabariKapten(timId) { return cek(await sb.rpc('tednas_kabari_kapten', { p_tim: timId })); },
       async perbaikiLihat(kode, token) { return cek(await sb.rpc('tednas_perbaiki_lihat', { p_kode: kode, p_token: token })); },
       async perbaikiSimpan(kode, token, pemain) { return cek(await sb.rpc('tednas_perbaiki_simpan', { p_kode: kode, p_token: token, p_pemain: pemain })); },
+      /* Ubah semua data tim (migrasi 15). Belum terpasang → jatuh ke fungsi migrasi 12 (hanya pemain & berkas). */
+      ubahAda: null,
+      async ubahLihat(kode, token) {
+        if (this.ubahAda !== false) {
+          const r = await sb.rpc('tednas_ubah_lihat', { p_kode: kode, p_token: token });
+          if (!r.error) { this.ubahAda = true; return r.data; }
+          if (!/tednas_ubah_lihat|function|schema cache/i.test(r.error.message || '')) throw r.error;
+          this.ubahAda = false;
+        }
+        return this.perbaikiLihat(kode, token);
+      },
+      async ubahSimpan(kode, token, pemain, tim) {
+        if (!this.ubahAda) return this.perbaikiSimpan(kode, token, pemain);
+        return cek(await sb.rpc('tednas_ubah_tim', { p_kode: kode, p_token: token, p_pemain: pemain, p_tim: tim || null }));
+      },
       async hapusTim(t) {
         cek(await sb.from('tednas_tim').delete().eq('id', t.id));
         // Berkas Google Drive tidak dihapus dari sini: Apps Script menandai tim & foldernya "[DIHAPUS]".
@@ -249,12 +264,25 @@
         const t = tim().find((x) => x.kode === kode && token === kode.toLowerCase()); if (!t) throw new Error('TAUTAN_TIDAK_SAH');
         return { ...pub(t), nama_kapten: t.nama_kapten, ai: null, pemain: t.pemain.map((p) => ({ urutan: p.urutan, nama: p.nama, dokumen_jenis: p.dokumen_jenis, ada_izin: !!p.izin_path })) };
       },
-      async perbaikiSimpan(kode, token, ubah) {
+      async perbaikiSimpan(kode, token, ubah) { return this.ubahSimpan(kode, token, ubah, null); },
+      ubahAda: true,
+      async ubahLihat(kode, token) {
         const t = tim().find((x) => x.kode === kode && token === kode.toLowerCase()); if (!t) throw new Error('TAUTAN_TIDAK_SAH');
-        if (t.status !== 'menunggu') throw new Error('SUDAH_TERVERIFIKASI');
-        t.pemain = t.pemain.map((p) => { const u = ubah.find((x) => x.urutan === p.urutan); return u ? { ...p, ...u, nama: (u.nama || p.nama).trim() } : p; });
+        return { ...(await this.perbaikiLihat(kode, token)), wa_kapten: t.wa_kapten, prov_kode: t.prov_kode, kab_kode: t.kab_kode, kecamatan: t.kecamatan, desa_kode: t.desa_kode };
+      },
+      async ubahSimpan(kode, token, ubah, ubahTim) {
+        const t = tim().find((x) => x.kode === kode && token === kode.toLowerCase()); if (!t) throw new Error('TAUTAN_TIDAK_SAH');
+        if (ubahTim) {
+          if (ubahTim.wa !== undefined) { let w = String(ubahTim.wa).replace(/\D/g, ''); if (w.startsWith('08')) w = '62' + w.slice(1); if (!/^628\d{7,12}$/.test(w)) throw new Error('WA_TIDAK_VALID'); if (tim().some((x) => x.wa_kapten === w && x.id !== t.id)) throw new Error('WA_SUDAH_ADA'); t.wa_kapten = w; }
+          const { wa, ...lain } = ubahTim; Object.assign(t, lain);
+        }
+        for (const u of ubah) {
+          if (u.hapus) { if (u.urutan !== 6) throw new Error('HANYA_CADANGAN'); t.pemain = t.pemain.filter((p) => p.urutan !== 6); continue; }
+          if (u.baru) { if (u.urutan !== 6) throw new Error('HANYA_CADANGAN'); if (t.pemain.some((p) => p.urutan === 6)) throw new Error('CADANGAN_SUDAH_ADA'); const { baru, ...isi } = u; t.pemain.push({ ...isi, nama: isi.nama.trim() }); continue; }
+          t.pemain = t.pemain.map((p) => (p.urutan === u.urutan ? { ...p, ...u, nama: (u.nama || p.nama).trim() } : p));
+        }
         t.nama_kapten = t.pemain[0].nama; t.perbaiki_pada = new Date().toISOString();
-        tulis('tim', tim().map((x) => (x.id === t.id ? t : x))); return { ok: true, diubah: ubah.length };
+        tulis('tim', tim().map((x) => (x.id === t.id ? t : x))); return { ok: true, diubah: ubah.length + (ubahTim ? Object.keys(ubahTim).length : 0) };
       },
       async hapusTim(t) {
         tulis('tim', tim().filter((x) => x.id !== t.id));

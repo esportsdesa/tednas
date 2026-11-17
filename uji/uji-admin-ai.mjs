@@ -177,11 +177,12 @@ await uji("WA Kapten: satu klik → WhatsApp terbuka dengan daftar perbaikan per
   assert.ok(teks.includes(`${ASAL}/perbaiki.html#TED-00002.${TOKEN}`), "tautan perbaikan khusus tim");
   assert.ok(teks.endsWith("Kalau semuanya sesuai, tim langsung terverifikasi.\n\nGabung grup WhatsApp peserta untuk info jadwal: https://chat.whatsapp.com/UjiGrup\n\nPanitia TEDNas 2027"), teks);
 
-  // Tim terverifikasi: isinya ajakan masuk grup peserta (user 17 Nov), tanpa tautan perbaikan.
+  // Tim terverifikasi: ajakan masuk grup peserta (user 17 Nov) + tautan ubah data (user 18 Nov: semua data bisa diubah).
   const u2 = await buka("00000000-0000-0000-0000-000000000001");
   assert.equal(u2.searchParams.get("text"), "Halo Kak Kapten 1, kapten tim *Tim Desa 1* (TED-00001), Desa Desa 1.\n\n"
     + "Tim kakak sudah *TERVERIFIKASI* di Turnamen Esports Desa Nasional 2027.\n\n"
     + "Masuk grup WhatsApp peserta dan ajak semua pemain. Jadwal kualifikasi online dan pengumuman turnamen dikirim di sana:\nhttps://chat.whatsapp.com/UjiGrup\n\n"
+    + `Kalau ada data tim yang perlu diubah (nama tim, pemain, berkas, atau desa), pakai tautan ini (khusus tim kakak, jangan disebar):\n${ASAL}/perbaiki.html#TED-00001.${TOKEN}\n\n`
     + "Panitia TEDNas 2027");
   assert.equal(catat.kabari.length, 2);
 });

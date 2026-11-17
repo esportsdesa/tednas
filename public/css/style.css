@@ -406,3 +406,13 @@ td small.ai-tunggu { display: block; margin-top: 4px; font-size: 11.5px; color: 
 li.ai-cek { color: #8a5a00; font-weight: 600; }
 li.ai-info { color: var(--teks-2); }
 li.ai-ok { color: var(--hijau); list-style: "✓  "; }
+
+/* ---------- Ubah data tim (migrasi 15) ---------- */
+.pb-desa-kini { display: grid; gap: 2px; padding: 10px 12px; background: #fff; border: 1.5px solid var(--garis); border-radius: 3px; margin-top: 6px; }
+.pb-desa-kini small { font-weight: 500; color: var(--teks-2); }
+.pb-desa-kini .tautan { justify-self: start; }
+.pb-desa-pilih { display: grid; gap: 8px; margin-top: 6px; }
+.pb-tambah { margin: 14px 0 6px; }
+.pb-hapus { display: flex; gap: 8px; align-items: center; font-weight: 700; font-size: 14px; color: var(--merah); margin: 4px 0 10px; }
+.pb-baru { border-top: 2px solid var(--magenta); }
+.pb-baru legend { color: var(--magenta); }

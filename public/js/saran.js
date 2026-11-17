@@ -143,6 +143,8 @@
         if (k === 'sudah_grup') baris.push('', 'Kakak sudah ada di grup WhatsApp peserta. Pastikan semua pemain juga sudah masuk, karena jadwal kualifikasi online dan pengumuman turnamen dikirim di sana:', grup);
         else baris.push('', (diGrup === false ? 'Nomor kakak belum ada di grup WhatsApp peserta. ' : '') + 'Masuk grup WhatsApp peserta dan ajak semua pemain. Jadwal kualifikasi online dan pengumuman turnamen dikirim di sana:', grup);
       }
+      // Semua data tetap bisa diubah setelah terverifikasi (user 18 Nov; migrasi 15).
+      if (tautan) baris.push('', 'Kalau ada data tim yang perlu diubah (nama tim, pemain, berkas, atau desa), pakai tautan ini (khusus tim kakak, jangan disebar):', tautan);
       baris.push('', 'Panitia TEDNas 2027');
       return baris.join('\n');
     }
