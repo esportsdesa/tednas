@@ -13,7 +13,7 @@ const AKAR = new URL("..", import.meta.url);
 
 export function buatDunia({ KUNCI = "c3".repeat(32), PERAN = "utama", KUNCI_AI = null } = {}) {
 const KODE_GS = readFileSync(new URL("deploy/drive/Code.gs", AKAR), "utf8");
-const MIGRASI = ["supabase/migration-8-drive.sql", "supabase/migration-9-cermin-drive.sql"].map((f) => readFileSync(new URL(f, AKAR), "utf8")).join("\n");
+const MIGRASI = ["supabase/migration-8-drive.sql", "supabase/migration-9-cermin-drive.sql", "supabase/migration-17-drive-twibbon.sql"].map((f) => readFileSync(new URL(f, AKAR), "utf8")).join("\n");
 const SB = "https://dlznnpmzccndjqxxhnio.supabase.co";
 const J = (x) => JSON.parse(JSON.stringify(x));
 const S = {};
@@ -77,6 +77,8 @@ function buatLembar(nama) {
     getName: () => sh._nama, setName(n) { sh._nama = n; return sh; }, setFrozenRows: () => sh,
     getLastRow: () => { for (let i = rows.length - 1; i >= 0; i--) if (rows[i] && rows[i].some((x) => x !== "" && x != null)) return i + 1; return 0; },
     getMaxRows: () => maxR, insertRowsAfter: (_, n) => { maxR += n; },
+    getLastColumn: () => rows.reduce((m, r) => { if (!r) return m; for (let j = r.length - 1; j >= 0; j--) if (r[j] !== "" && r[j] != null) return Math.max(m, j + 1); return m; }, 0),
+    insertColumnBefore: (c) => { for (const r of rows) if (r && r.length >= c) r.splice(c - 1, 0, ""); },
     deleteRows: (awal, n) => { rows.splice(awal - 1, n); maxR -= n; },
     getRange: (r, c, nr = 1, nc = 1) => {
       assert.ok(r >= 1 && c >= 1 && r + nr - 1 <= maxR, `rentang ${r},${c},${nr},${nc} > ${maxR}`);
@@ -133,7 +135,7 @@ function rpcTiruan(nama, b) {
     }
     case "tednas_drive_hapus_selesai": db.hapus = db.hapus.filter((h) => h.kode !== b.p_kode); return [200, { ok: true }];
     case "tednas_drive_dipakai": {
-      const pakai = new Set(db.tim.flatMap((x) => x.pemain.flatMap((p) => [p.dokumen_path, p.profil_ml_path, p.follow_esports_path, p.follow_ppdt_path, p.izin_path])));
+      const pakai = new Set(db.tim.flatMap((x) => [x.twibbon_path, ...x.pemain.flatMap((p) => [p.dokumen_path, p.profil_ml_path, p.follow_esports_path, p.follow_ppdt_path, p.izin_path])]).filter(Boolean)); // migrasi 17: + twibbon
       return [200, b.p_paths.filter((x) => pakai.has(x))];
     }
     case "tednas_drive_setel_url":
@@ -163,9 +165,11 @@ function daftarTim(nama, pemain, opsi = {}) {
   const t = { id: randomUUID(), kode, nama_tim: nama, nama_kapten: pemain[0].nama, wa_kapten: opsi.wa ?? `62812000000${seq}`, prov_kode: "35", provinsi: "JAWA TIMUR",
     kab_kode: "35.07", kabupaten: "KAB. MALANG", kecamatan: "Pakis", desa_kode: "35.07.18.2010", desa: "Mangliawan", status: "menunggu",
     created_at: new Date(S.jam).toISOString(), versi: 1, tersalin: 0, rapi: 0, folder: null,
+    // migrasi 16: form_versi 2 = daftar dengan WA tiap pemain + twibbon; paket: pemain 1 wa = wa_kapten
+    twibbon_path: opsi.twibbon == null ? null : opsi.lama ? opsi.twibbon : sahkan(opsi.twibbon), form_versi: opsi.twibbon == null ? 1 : 2,
     pemain: pemain.map((p, i) => {
       const s = (x) => (x == null ? null : opsi.lama ? x : sahkan(x));
-      const q = { urutan: i + 1, nama: p.nama, dokumen_jenis: p.jenis ?? "KTP", dokumen_path: s(p.dok), profil_ml_path: s(p.ml), follow_esports_path: s(p.ig1), follow_ppdt_path: s(p.ig2), izin_path: s(p.izin) };
+      const q = { urutan: i + 1, nama: p.nama, dokumen_jenis: p.jenis ?? "KTP", wa: i === 0 ? (opsi.wa ?? `62812000000${seq}`) : (p.wa ?? null), dokumen_path: s(p.dok), profil_ml_path: s(p.ml), follow_esports_path: s(p.ig1), follow_ppdt_path: s(p.ig2), izin_path: s(p.izin) };
       for (const k of ["dokumen_path", "profil_ml_path", "follow_esports_path", "follow_ppdt_path"]) assert.ok(q[k], `${k} ditolak`);
       return q;
     }) };

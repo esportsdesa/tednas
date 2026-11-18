@@ -88,13 +88,15 @@ await uji("pendaftaran → kabar tim: baris Sheet + berkas pindah ke folder tim 
   assert.equal(tim.data().length, 1);
   const b = tim.baris(2);
   assert.deepEqual(b.slice(0, 4), ["TED-00001", "Garuda Desa", "Pemain 1-0", t1.wa_kapten]);
-  assert.equal(b[9], "Menunggu verifikasi"); assert.equal(b[10], "5"); assert.equal(b[11], "2026-11-11 10:02");
-  assert.equal(b[12], t1.folder, "kolom Folder berkas");
+  assert.equal(b[9], "Menunggu verifikasi"); assert.equal(b[10], "5"); assert.equal(b[12], "2026-11-11 10:02");
+  assert.equal(b[11], "tidak wajib (daftar sebelum 18 Nov)", "tim form v1: twibbon tidak wajib");
+  assert.equal(b[13], t1.folder, "kolom Folder berkas");
   const pem = ss.getSheetByName("Pemain").data();
   assert.equal(pem.length, 5);
   assert.deepEqual(pem.map((x) => x[3]), ["Kapten", "Pemain", "Pemain", "Pemain", "Pemain"]);
-  assert.match(pem[0][6], /^https:\/\/drive\.google\.com\/file\/d\/1Tiru\w+\/view$/);
-  assert.equal(pem[4][10] !== "", true, "izin orang tua pemain 5"); assert.equal(pem[0][10], "");
+  assert.match(pem[0][7], /^https:\/\/drive\.google\.com\/file\/d\/1Tiru\w+\/view$/);
+  assert.equal(pem[4][11] !== "", true, "izin orang tua pemain 5"); assert.equal(pem[0][11], "");
+  assert.deepEqual(pem.map((x) => x[5]), [t1.wa_kapten, "", "", "", ""], "kolom WhatsApp: pemain 1 = kapten, tim lama tanpa WA pemain");
   const folder = benda.get(t1.folder.split("/").pop());
   assert.equal(folder.getName(), "TED-00001 — Garuda Desa (Mangliawan, KAB. MALANG)");
   assert.equal(benda.get(folder._induk).getName(), "35 JAWA TIMUR");
@@ -235,8 +237,73 @@ await uji("tim lama (berkas di bucket Supabase): baris tertulis, berkas tidak di
   const lama = daftarTim("Tim Lama", Array.from({ length: 5 }, (_, i) => ({ nama: `Lama ${i}`, dok: `dokumen/a${i}.jpg`, ml: `dokumen/b${i}.png`, ig1: `dokumen/c${i}.jpg`, ig2: `dokumen/d${i}.jpg` })), { lama: true });
   assert.equal(kabar("tim", { tim: paket(lama) }).ok, true);
   const pem = benda.get(props.get("SHEET")).getSheetByName("Pemain").data().filter((x) => x[0] === lama.kode);
-  assert.equal(pem[0][6], "Supabase: dokumen/a0.jpg");
+  assert.equal(pem[0][7], "Supabase: dokumen/a0.jpg");
   assert.equal(anakDari(benda.get(lama.folder.split("/").pop())).length, 0);
+});
+
+await uji("form v2: WA tiap pemain + bukti twibbon → kolom Sheet, twibbon pindah ke folder tim", () => {
+  S.jam += 60_000;
+  const pem = unggahPemain(50).map((p, i) => (i ? { ...p, wa: `62813000050${i}` } : p));
+  const t = daftarTim("Twibbon Jaya", pem, { twibbon: unggah(JPG("twibbon50"), "image/jpeg").path });
+  assert.equal(t.form_versi, 2);
+  assert.equal(kabar("tim", { tim: paket(t) }).rapi, true);
+  const ss = benda.get(props.get("SHEET"));
+  const b = ss.getSheetByName("Tim").data().find((x) => x[0] === t.kode);
+  const idTw = t.twibbon_path.slice(7).split(".")[0];
+  assert.equal(b[11], `https://drive.google.com/file/d/${idTw}/view`, "kolom Bukti twibbon");
+  assert.equal(b[13], t.folder);
+  const baris = ss.getSheetByName("Pemain").data().filter((x) => x[0] === t.kode);
+  assert.deepEqual(baris.map((x) => x[5]), [t.wa_kapten, "628130000501", "628130000502", "628130000503", "628130000504"]);
+  assert.deepEqual(baris.map((x) => x[6]), ["KTP", "KK", "KTP", "KTP", "KTP"], "jenis identitas tetap di kolomnya");
+  const f = benda.get(idTw);
+  assert.equal(f._induk, t.folder.split("/").pop()); assert.equal(f.getName(), "Bukti twibbon tim.jpg");
+  assert.equal(anakDari(benda.get(t.folder.split("/").pop())).length, 22);
+});
+
+await uji("twibbon di Berkas Masuk tidak dibuang sebagai yatim; tim yang dirapikan Code.gs lama → drive_rapi = 0 → twibbon ikut dipindah", () => {
+  const t = daftarTim("Rapi Lama", unggahPemain(51), { twibbon: unggah(PNG("twibbon51"), "image/png").path });
+  t.tersalin = t.versi; t.rapi = 1;  // seperti TED-00068: ditulis Code.gs 2026-11-16, twibbon tertinggal di Berkas Masuk
+  const f = benda.get(t.twibbon_path.slice(7).split(".")[0]);
+  S.jam += 8 * 86_400_000;
+  J(gs.rapikan());
+  assert.equal(f.isTrashed(), false, "twibbon dipakai (migrasi 17)");
+  assert.equal(benda.get(benda.get(f._induk)._induk).getName(), "Berkas Masuk");
+  t.rapi = 0;
+  S.jam += 10 * 60_000;
+  assert.ok(J(gs.rapikan()).rapi >= 1);
+  assert.equal(f._induk, t.folder.split("/").pop()); assert.equal(f.getName(), "Bukti twibbon tim.png");
+});
+
+await uji("Sheet buatan versi lama: kolom WhatsApp & Bukti twibbon disisipkan di tempatnya, isi lama bergeser (tidak ditimpa)", () => {
+  const W = buatDunia();
+  W.gs.pasang();
+  const ss = W.benda.get(W.props.get("SHEET"));
+  const tim = ss.getSheetByName("Tim"), pem = ss.getSheetByName("Pemain");
+  tim._rows.length = 0; pem._rows.length = 0;
+  // tim yang sudah tertulis versi lama, berkasnya belum dirapikan: putaran pertama versi baru = perapian (tanpa tulisTim)
+  const t0 = W.daftarTim("Tim Sheet Lama", Array.from({ length: 5 }, (_, i) => ({ nama: `Lama ${i}`, dok: `dokumen/e${i}.jpg`, ml: `dokumen/f${i}.png`, ig1: `dokumen/g${i}.jpg`, ig2: `dokumen/h${i}.jpg` })), { lama: true });
+  t0.tersalin = t0.versi;
+  tim._rows.push(["Kode", "Nama tim", "Kapten", "WhatsApp kapten", "Provinsi", "Kabupaten", "Kecamatan", "Desa", "Kode desa", "Status", "Jumlah pemain", "Waktu daftar (WIB)", "Folder berkas", "Terakhir disalin (WIB)"],
+    [t0.kode, "Tim Sheet Lama", "Kapten Lama", "6281299900000", "JAWA TIMUR", "KAB. MALANG", "Pakis", "Mangliawan", "35.07.18.2010", "Terverifikasi", "5", "2026-11-12 08:00", "https://drive.google.com/drive/folders/lama", "2026-11-16 10:00"]);
+  pem._rows.push(["Kode tim", "Nama tim", "No", "Peran", "Nama", "Jenis identitas", "Kartu identitas", "Profil ML", "Follow @esportsdesa.official", "Follow @ditjen_ppdt", "Izin orang tua"],
+    [t0.kode, "Tim Sheet Lama", "1", "Kapten", "Kapten Lama", "KTP", "https://drive.google.com/file/d/ktp/view", "https://drive.google.com/file/d/ml/view", "a", "b", ""]);
+  W.S.jam += 10 * 60_000;
+  assert.equal(J(W.gs.rapikan()).rapi, 1);
+  assert.deepEqual(tim.baris(1), J(W.gs.KEPALA_TIM), "perapian pun menyelaraskan kepala dulu");
+  assert.deepEqual(tim.data().find((x) => x[0] === t0.kode).slice(10, 14), ["5", "", "2026-11-12 08:00", t0.folder], "folder ditulis di kolom yang benar");
+  const t = W.daftarTim("Tim Baru", Array.from({ length: 5 }, (_, i) => ({ nama: `Baru ${i}`, dok: `dokumen/a${i}.jpg`, ml: `dokumen/b${i}.png`, ig1: `dokumen/c${i}.jpg`, ig2: `dokumen/d${i}.jpg` })), { lama: true });
+  assert.equal(W.kabar("tim", { tim: W.paket(t) }).ok, true);
+  assert.deepEqual(tim.baris(1), J(W.gs.KEPALA_TIM));
+  assert.deepEqual(pem.baris(1), J(W.gs.KEPALA_PEMAIN));
+  const lama = tim.data().find((x) => x[0] === t0.kode);
+  assert.deepEqual([lama[10], lama[11], lama[12], lama[13]], ["5", "", "2026-11-12 08:00", t0.folder]);
+  const lp = pem.data().find((x) => x[0] === t0.kode);
+  assert.deepEqual(lp.slice(4, 8), ["Kapten Lama", "", "KTP", "https://drive.google.com/file/d/ktp/view"]);
+  assert.equal(tim.data().find((x) => x[0] === t.kode)[11], "tidak wajib (daftar sebelum 18 Nov)");
+  t.versi++;
+  W.kabar("tim", { tim: W.paket(t) });
+  assert.equal(tim.baris(1).length, 15, "kabar berikutnya tidak menyisipkan lagi");
+  assert.equal(pem.baris(1).length, 12);
 });
 
 await uji("kunci belum dipasang di Supabase: pasang berhenti dengan pesan jelas, pemicu tidak meledak", () => {
@@ -317,10 +384,10 @@ console.log(`${lulus} uji Code.gs (utama) lulus`);
     assert.equal(C.benda.get(idDari(p0))._induk, utama.getId(), "berkas utama tidak dipindah");
     assert.equal(C.benda.get(C.benda.get(t1.cfolder.split("/").pop())._induk)._nama, "35 JAWA TIMUR");
     const tim = sheet().getSheetByName("Tim").data().find((x) => x[0] === t1.kode);
-    assert.equal(tim[12], t1.cfolder, "kolom Folder berkas = folder cermin");
+    assert.equal(tim[13], t1.cfolder, "kolom Folder berkas = folder cermin");
     const pem = sheet().getSheetByName("Pemain").data().filter((x) => x[0] === t1.kode);
     assert.equal(pem.length, 5);
-    assert.equal(pem[0][6], `https://drive.google.com/file/d/${salinan.getId()}/view`, "tautan ke SALINAN, bukan berkas utama");
+    assert.equal(pem[0][7], `https://drive.google.com/file/d/${salinan.getId()}/view`, "tautan ke SALINAN, bukan berkas utama");
     assert.ok(pem.every((x) => !x.join(" ").includes(utama.getId())));
   });
 
@@ -344,7 +411,7 @@ console.log(`${lulus} uji Code.gs (utama) lulus`);
     const baru = isiFolder(t1.cfolder).find((f) => f.getDescription() === `asal:${idDari(t1.pemain[2].profil_ml_path)}`);
     assert.equal(baru.getName(), "3. Pemain g-2 — Profil ML.png");
     assert.equal(isiFolder(t1.cfolder).length, 21);
-    assert.equal(sheet().getSheetByName("Pemain").data().filter((x) => x[0] === t1.kode)[2][7], `https://drive.google.com/file/d/${baru.getId()}/view`);
+    assert.equal(sheet().getSheetByName("Pemain").data().filter((x) => x[0] === t1.kode)[2][8], `https://drive.google.com/file/d/${baru.getId()}/view`);
   });
 
   await ujiC("tim yang sama sedang disalin eksekusi lain → SIBUK (disusulkan pemicu)", () => {
@@ -384,7 +451,28 @@ console.log(`${lulus} uji Code.gs (utama) lulus`);
   await ujiC("tim lama (bucket Supabase): baris tertulis apa adanya, tidak ada yang disalin", () => {
     const lama = C.daftarTim("Tim Lama", Array.from({ length: 5 }, (_, i) => ({ nama: `Lama ${i}`, dok: `dokumen/a${i}.jpg`, ml: `dokumen/b${i}.png`, ig1: `dokumen/c${i}.jpg`, ig2: `dokumen/d${i}.jpg` })), { lama: true });
     assert.deepEqual(C.kabar("tim", { tim: C.paket(lama) }), { ok: true, disalin: 0 });
-    assert.equal(sheet().getSheetByName("Pemain").data().find((x) => x[0] === lama.kode)[6], "Supabase: dokumen/a0.jpg");
+    assert.equal(sheet().getSheetByName("Pemain").data().find((x) => x[0] === lama.kode)[7], "Supabase: dokumen/a0.jpg");
+  });
+
+  await ujiC("form v2: twibbon DISALIN ke folder tim akun ini, WA tiap pemain di Sheet; twibbon diganti → salinan lama dibuang", () => {
+    const pem = pemainUtama("w").map((p, i) => (i ? { ...p, wa: `62813111000${i}` } : p));
+    const t = C.daftarTim("Cermin Twibbon", pem, { lama: true, twibbon: berkasUtama(JPG("tw"), "image/jpeg", "jpg") });
+    assert.deepEqual(C.kabar("tim", { tim: C.paket(t) }), { ok: true, disalin: 22 });
+    const s = isiFolder(t.cfolder).find((f) => f.getName() === "Bukti twibbon tim.jpg");
+    assert.ok(s && s.getDescription() === `asal:${idDari(t.twibbon_path)}`, "salinan twibbon bertanda asal");
+    assert.ok(s._isi.equals(isiUtama.get(t.twibbon_path)));
+    assert.equal(C.benda.get(idDari(t.twibbon_path))._induk, utama.getId(), "twibbon utama tidak dipindah");
+    const b = sheet().getSheetByName("Tim").data().find((x) => x[0] === t.kode);
+    assert.equal(b[11], `https://drive.google.com/file/d/${s.getId()}/view`, "tautan twibbon = SALINAN");
+    assert.deepEqual(sheet().getSheetByName("Pemain").data().filter((x) => x[0] === t.kode).map((x) => x[5]), [t.wa_kapten, "628131110001", "628131110002", "628131110003", "628131110004"]);
+    t.versi++;
+    assert.deepEqual(C.kabar("tim", { tim: C.paket(t) }), { ok: true, disalin: 0 });
+    assert.equal(s.isTrashed(), false, "salinan twibbon tidak dianggap berkas usang");
+    t.twibbon_path = berkasUtama(PNG("tw2"), "image/png", "png"); t.versi++;
+    assert.deepEqual(C.kabar("tim", { tim: C.paket(t) }), { ok: true, disalin: 1 });
+    assert.equal(s.isTrashed(), true);
+    assert.ok(isiFolder(t.cfolder).some((f) => f.getName() === "Bukti twibbon tim.png"));
+    assert.equal(isiFolder(t.cfolder).length, 22);
   });
 
   await ujiC("cek: folder tim di dalam folder TEDNas akun ini + daftar kode di Sheet", () => {

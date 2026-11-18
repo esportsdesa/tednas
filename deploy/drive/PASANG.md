@@ -9,7 +9,7 @@ My Drive
     ├── Data Pendaftar TEDNas 2027        Sheet: tab "Tim" dan "Pemain" (dengan tautan tiap berkas)
     ├── Berkas Masuk / YYYY-MM-DD         unggahan yang baru masuk
     └── Tim / 35 JAWA TIMUR / TED-00001 — Nama Tim (Desa, Kabupaten)
-                                          "1. Nama — KTP.jpg", "1. Nama — Profil ML.png", …
+                                          "1. Nama — KTP.jpg", "1. Nama — Profil ML.png", …, "Bukti twibbon tim.jpg"
 ```
 
 ## Cara kerja

@@ -25,12 +25,17 @@
  *       ├── Data Pendaftar TEDNas 2027       (Sheet: tab "Tim" dan "Pemain")
  *       ├── Berkas Masuk / YYYY-MM-DD        (unggahan baru; yang tak dipakai dibuang setelah HARI_YATIM hari)
  *       └── Tim / <kode prov> <Provinsi> / TED-00001 — Nama Tim (Desa, Kabupaten)
+ *               "1. Nama — KTP.jpg", …, "Bukti twibbon tim.jpg"
+ *
+ * Versi 2026-11-18 (pendaftar baru wajib WA tiap pemain + 1 screenshot twibbon per tim, migrasi 16 di Supabase):
+ * kolom "WhatsApp" (Pemain) dan "Bukti twibbon" (Tim) — disisipkan otomatis di Sheet lama, isi lama ikut bergeser;
+ * twibbon dipindah (utama) / disalin (cermin) ke folder tim seperti berkas pemain.
  *
  * Sheet = salinan satu arah; mengedit Sheet tidak mengubah data di situs.
  * Panduan pasang: deploy/drive/PASANG.md di repo esportsdesa/tednas.
  */
 
-var VERSI = "2026-11-16";
+var VERSI = "2026-11-18";
 var PERAN = "utama"; // "utama" | "cermin"
 var KUNCI = "__KUNCI__"; // utama = tednas_rahasia.drive_rahasia, cermin = .cermin_rahasia. RAHASIA: jangan dibagikan.
 var KUNCI_AI = "__KUNCI_AI__"; // utama saja: = tednas_rahasia.ai_rahasia (agen AI, baca berkas). Biarkan __…__ = mati.
@@ -61,9 +66,13 @@ var BERKAS = [
   { kolom: "izin_path", label: "Izin orang tua" },
 ];
 var KEPALA_TIM = ["Kode", "Nama tim", "Kapten", "WhatsApp kapten", "Provinsi", "Kabupaten", "Kecamatan", "Desa",
-  "Kode desa", "Status", "Jumlah pemain", "Waktu daftar (WIB)", "Folder berkas", "Terakhir disalin (WIB)"];
-var KEPALA_PEMAIN = ["Kode tim", "Nama tim", "No", "Peran", "Nama", "Jenis identitas", "Kartu identitas",
+  "Kode desa", "Status", "Jumlah pemain", "Bukti twibbon", "Waktu daftar (WIB)", "Folder berkas", "Terakhir disalin (WIB)"];
+var KEPALA_PEMAIN = ["Kode tim", "Nama tim", "No", "Peran", "Nama", "WhatsApp", "Jenis identitas", "Kartu identitas",
   "Profil ML", "Follow @esportsdesa.official", "Follow @ditjen_ppdt", "Izin orang tua"];
+/* Kolom yang ditambahkan setelah Sheet pertama dibuat — lihat selaraskanKepala(). */
+var KOLOM_BARU = ["Bukti twibbon", "WhatsApp"];
+var NAMA_TWIBBON = "Bukti twibbon tim";
+var TWIBBON_LAMA = "tidak wajib (daftar sebelum 18 Nov)";
 var STATUS = { menunggu: "Menunggu verifikasi", terverifikasi: "Terverifikasi" };
 
 /* ── Yang dijalankan orang ────────────────────────────────────────────── */
@@ -301,28 +310,33 @@ function cerminBerkas(t, folder) {
   }
   var dipakai = {};
   var disalin = 0;
+  // path berkas di Drive utama → path SALINAN di folder tim akun ini (kosong / bucket Supabase: apa adanya)
+  var salin = function (path, namaDasar) {
+    var m = /^gdrive\/([A-Za-z0-9_-]+)\.(pdf|jpg|png)$/.exec(String(path || ""));
+    if (!m) return path;
+    var nama = namaDasar + "." + m[2];
+    var f = ada[m[1]];
+    if (!f) {
+      f = DriveApp.getFileById(m[1]).makeCopy(nama, folder);
+      f.setDescription("asal:" + m[1]);
+      ada[m[1]] = f;
+      disalin++;
+    } else if (f.getName() !== nama) {
+      f.setName(nama);
+    }
+    dipakai[m[1]] = true;
+    return "gdrive/" + f.getId() + "." + m[2];
+  };
   var pemain = (t.pemain || []).map(function (p) {
     var q = Object.assign({}, p);
     BERKAS.forEach(function (b) {
-      var m = /^gdrive\/([A-Za-z0-9_-]+)\.(pdf|jpg|png)$/.exec(String(p[b.kolom] || ""));
-      if (!m) return; // kosong / berkas lama di bucket Supabase (tautannya ditulis apa adanya)
-      var nama = p.urutan + ". " + bersih(p.nama) + " — " + (b.label || p.dokumen_jenis) + "." + m[2];
-      var f = ada[m[1]];
-      if (!f) {
-        f = DriveApp.getFileById(m[1]).makeCopy(nama, folder);
-        f.setDescription("asal:" + m[1]);
-        ada[m[1]] = f;
-        disalin++;
-      } else if (f.getName() !== nama) {
-        f.setName(nama);
-      }
-      dipakai[m[1]] = true;
-      q[b.kolom] = "gdrive/" + f.getId() + "." + m[2];
+      q[b.kolom] = salin(p[b.kolom], p.urutan + ". " + bersih(p.nama) + " — " + (b.label || p.dokumen_jenis));
     });
     return q;
   });
+  var twibbon = salin(t.twibbon_path, NAMA_TWIBBON);
   Object.keys(ada).forEach(function (id) { if (!dipakai[id]) ada[id].setTrashed(true); }); // berkas sudah diganti di situs
-  return Object.assign({}, t, { pemain: pemain, folder: folder.getUrl(), disalin: disalin });
+  return Object.assign({}, t, { pemain: pemain, twibbon_path: twibbon, folder: folder.getUrl(), disalin: disalin });
 }
 
 /** Pemicu cermin: kabar yang gagal/terlambat (cermin_tersalin < drive_versi) + antrean hapus. */
@@ -414,7 +428,7 @@ function rapikan() {
   return hasil;
 }
 
-/** Pindahkan & namai berkas satu tim: "1. Nama — KTP.jpg" di folder timnya. */
+/** Pindahkan & namai berkas satu tim: "1. Nama — KTP.jpg" (+ "Bukti twibbon tim.jpg") di folder timnya. */
 function rapikanTim(t) {
   var folder = folderTim(t);
   (t.pemain || []).forEach(function (p) {
@@ -427,10 +441,17 @@ function rapikanTim(t) {
       f.setName(p.urutan + ". " + bersih(p.nama) + " — " + (b.label || p.dokumen_jenis) + "." + m[2]);
     });
   });
+  var tw = /^gdrive\/([A-Za-z0-9_-]+)\.(pdf|jpg|png)$/.exec(String(t.twibbon_path || ""));
+  if (tw) {
+    var f = DriveApp.getFileById(tw[1]);
+    f.moveTo(folder);
+    f.setName(NAMA_TWIBBON + "." + tw[2]);
+  }
   var gembok = LockService.getScriptLock();
   if (gembok.tryLock(30000)) {
     try {
       var sh = dasar().ss.getSheetByName("Tim");
+      selaraskanKepala(sh, KEPALA_TIM); // posisi "Folder berkas" bergeser di versi 2026-11-18
       var baris = cariBaris(sh, t.kode);
       if (baris) sh.getRange(baris, KEPALA_TIM.indexOf("Folder berkas") + 1).setValue(folder.getUrl());
     } finally {
@@ -628,22 +649,27 @@ function tautan(path) {
 function tulisTim(ss, t) {
   var pemain = (t.pemain || []).slice().sort(function (a, b) { return a.urutan - b.urutan; });
   var shTim = ss.getSheetByName("Tim");
+  var shP = ss.getSheetByName("Pemain");
+  selaraskanKepala(shTim, KEPALA_TIM);
+  selaraskanKepala(shP, KEPALA_PEMAIN);
   var baris = cariBaris(shTim, t.kode);
   var folderLama = baris ? String(shTim.getRange(baris, KEPALA_TIM.indexOf("Folder berkas") + 1).getValues()[0][0] || "") : "";
   if (!baris) baris = Math.max(shTim.getLastRow(), 1) + 1;
   tulis(shTim, baris, [[
     t.kode, t.nama_tim, t.nama_kapten, t.wa_kapten, t.provinsi, t.kabupaten, t.kecamatan, t.desa, t.desa_kode,
-    STATUS[t.status] || t.status, String(pemain.length), waktuWib(t.created_at), t.folder || folderLama, waktuWib(new Date().toISOString()),
+    STATUS[t.status] || t.status, String(pemain.length),
+    t.twibbon_path ? tautan(t.twibbon_path) : (Number(t.form_versi) >= 2 ? "" : TWIBBON_LAMA),
+    waktuWib(t.created_at), t.folder || folderLama, waktuWib(new Date().toISOString()),
   ]]);
   shTim.getRange(baris, KEPALA_TIM.indexOf("Status") + 1).setBackground(null);
 
   var isi = pemain.map(function (p) {
     return [t.kode, t.nama_tim, String(p.urutan), p.urutan === 1 ? "Kapten" : p.urutan === 6 ? "Cadangan" : "Pemain",
-      p.nama, p.dokumen_jenis, tautan(p.dokumen_path), tautan(p.profil_ml_path), tautan(p.follow_esports_path),
+      p.nama, p.urutan === 1 ? (p.wa || t.wa_kapten || "") : (p.wa || ""),
+      p.dokumen_jenis, tautan(p.dokumen_path), tautan(p.profil_ml_path), tautan(p.follow_esports_path),
       tautan(p.follow_ppdt_path), tautan(p.izin_path)];
   });
   // Baris pemain satu tim selalu bersebelahan: ditimpa di tempat bila jumlahnya sama, selain itu diganti.
-  var shP = ss.getSheetByName("Pemain");
   var blok = cariBlok(shP, t.kode);
   if (blok && blok.n === isi.length) {
     if (isi.length) tulis(shP, blok.awal, isi);
@@ -675,6 +701,26 @@ function cariBlok(sh, kode) {
     }
   }
   return awal < 0 ? null : { awal: awal + 2, n: n };
+}
+
+/**
+ * Sheet yang dibuat versi lama belum punya kolom di KOLOM_BARU: kolom itu DISISIPKAN tepat di tempatnya (isi lama
+ * ikut bergeser ke kanan, tidak ditimpa), lalu ditandai di properti supaya tidak dibaca ulang tiap kabar.
+ * Kepala lain yang diganti panitia dibiarkan. Dipanggil dari tulisTim() & rapikanTim(), di bawah gembok.
+ */
+function selaraskanKepala(sh, kepala) {
+  var p = PropertiesService.getScriptProperties();
+  var tanda = "KEPALA_" + sh.getName();
+  if (p.getProperty(tanda) === kepala.join("|")) return;
+  var n = sh.getLastColumn();
+  var ada = n ? sh.getRange(1, 1, 1, n).getValues()[0].map(String) : [];
+  for (var i = 0; i < kepala.length; i++) {
+    if (ada[i] === kepala[i] || KOLOM_BARU.indexOf(kepala[i]) < 0 || ada.indexOf(kepala[i]) >= 0) continue;
+    if (i < ada.length) sh.insertColumnBefore(i + 1);
+    sh.getRange(1, i + 1).setValue(kepala[i]).setFontWeight("bold");
+    ada.splice(i, 0, kepala[i]);
+  }
+  p.setProperty(tanda, kepala.join("|"));
 }
 
 function pasangKepala(sh, kepala) {

@@ -776,6 +776,13 @@ do $u$ declare v json; begin
   assert (v->>'diubah')::int = 1, 'tim lama: WA pemain boleh dikosongkan';
 end $u$;
 reset role;
+-- @@MIGRASI17@@
+
+-- 19. Twibbon ikut "dipakai" (migrasi 17): tidak dibuang Apps Script sebagai unggahan yatim
+do $u$ begin
+  assert public.tednas_drive_dipakai(${q(RAHASIA)}, array[${q(`gdrive/${id(5092)}.png`)}, ${q(`gdrive/${id(5091)}.jpg`)}, ${q(p16a[0].dokumen_path.split("~")[0])}])
+         = array[${q(`gdrive/${id(5092)}.png`)}, ${q(p16a[0].dokumen_path.split("~")[0])}], 'twibbon aktif dipakai; twibbon lama yang sudah diganti tidak';
+end $u$;
 \\echo SEMUA_LULUS
 `;
 
@@ -790,9 +797,11 @@ const migrasi13 = baca("supabase/migration-13-komunitas.sql");
 const migrasi14 = baca("supabase/migration-14-jalur-mzone-dasbor.sql");
 const migrasi15 = baca("supabase/migration-15-ubah-semua.sql");
 const migrasi16 = baca("supabase/migration-16-wa-pemain-twibbon.sql");
+const migrasi17 = baca("supabase/migration-17-drive-twibbon.sql");
 writeFileSync(f, ["\\set ON_ERROR_STOP 1", "\\set QUIET 1", "\\set VERBOSITY verbose", "set client_min_messages = warning;", baca("uji/sql-tiruan-supabase.sql"), skema,
   "-- migrasi 8, 9, 10, 12, 13, 14 & 15 dua kali: harus aman dijalankan ulang", migrasi, migrasi, migrasi9, migrasi9, migrasi10, migrasi10, migrasi12, migrasi12, migrasi13, migrasi13, migrasi14, migrasi14, migrasi15, migrasi15, SQL_BANTU, uji, uji2.replace("-- @@MIGRASI13@@", () => `reset role;\n${migrasi13}`)
-    .replace("-- @@MIGRASI16@@", () => `reset role;\n-- migrasi 16 dua kali (aman diulang), di atas data yang sudah ada\n${migrasi16}\n${migrasi16}`)].join("\n")
+    .replace("-- @@MIGRASI16@@", () => `reset role;\n-- migrasi 16 dua kali (aman diulang), di atas data yang sudah ada\n${migrasi16}\n${migrasi16}`)
+    .replace("-- @@MIGRASI17@@", () => `${migrasi17}\n${migrasi17}`)].join("\n")
   .replace(/^-- (\d+)\. (.*)$/gm, (_, n, t) => `\\echo LANGKAH ${n}: ${t}`));
 const NAMA = "tednas-uji-pg";
 const ssh = (cmd, input) => execFileSync("ssh", ["-o", "ConnectTimeout=15", "jot", cmd], { input, encoding: "utf8", stdio: ["pipe", "pipe", "pipe"] });
@@ -803,7 +812,7 @@ try {
   catch (e) { console.error(`GAGAL:\n${e.stdout ?? ""}\n${e.stderr ?? e.message}`); process.exitCode = 1; }
   if (keluar !== undefined) {
     if (!keluar.includes("SEMUA_LULUS")) { console.error(keluar); process.exitCode = 1; }
-    else console.log("uji SQL lulus (skema + migrasi 8–16 di Postgres 17, 18 kelompok)");
+    else console.log("uji SQL lulus (skema + migrasi 8–17 di Postgres 17, 19 kelompok)");
   }
 } finally {
   try { ssh(`docker rm -f ${NAMA} >/dev/null 2>&1; true`); } catch { /* */ }
