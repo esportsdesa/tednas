@@ -63,7 +63,7 @@
       [aktif.reduce((n, k) => n + Number(k.mendaftar), 0), 'Tim mendaftar lewat komunitas']].map(([a, b]) => `<div><b>${angka(a)}</b><span>${b}</span></div>`).join('');
     $('#k-baris').innerHTML = komunitasDaftar.length ? komunitasDaftar.map((k) => `<tr${k.aktif ? '' : ' class="nonaktif"'}>
       <td>${k.id}</td>
-      <td><b>${esc(k.nama)}</b><small>${esc([k.kota, k.provinsi].filter(Boolean).join(', '))}${k.bawaan ? ' · BAWAAN: tim tanpa tautan komunitas masuk sini' : ''}${k.aktif ? '' : ' · NONAKTIF'}</small></td>
+      <td><b>${esc(k.nama)}</b><small>${esc([k.kota, k.provinsi].filter(Boolean).join(', '))}${k.bawaan ? ' · BAWAAN: tim tanpa tautan komunitas masuk sini' : ''}${k.mzone_id ? ' · dibuat pengurusnya dari MZone' : ''}${k.aktif ? '' : ' · NONAKTIF'}</small></td>
       <td>${esc(k.pic_nama || '-')}${k.pic_wa ? `<small>+${esc(k.pic_wa)}</small>` : ''}</td>
       <td><code class="tautan-k">${esc(tautanKomunitas(k.id).replace(/^https?:\/\//, ''))}</code></td>
       <td><b>${angka(k.terverifikasi)}</b> terverifikasi<small>${angka(k.mendaftar)} mendaftar · ${angka(k.menunggu)} menunggu</small></td>

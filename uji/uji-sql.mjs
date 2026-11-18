@@ -783,6 +783,40 @@ do $u$ begin
   assert public.tednas_drive_dipakai(${q(RAHASIA)}, array[${q(`gdrive/${id(5092)}.png`)}, ${q(`gdrive/${id(5091)}.jpg`)}, ${q(p16a[0].dokumen_path.split("~")[0])}])
          = array[${q(`gdrive/${id(5092)}.png`)}, ${q(p16a[0].dokumen_path.split("~")[0])}], 'twibbon aktif dipakai; twibbon lama yang sudah diganti tidak';
 end $u$;
+reset role;
+-- @@MIGRASI18@@
+
+-- 20. Komunitas di MZone membuat tautan referal Esports Desa sendiri (migrasi 18)
+${harusGagal(`select public.tednas_mzone_komunitas(repeat('0', 64), '01957a00-0000-7000-8000-000000000001')`, "KUNCI_SALAH", "anon")}
+${harusGagal(`select public.tednas_mzone_komunitas((select db from _j), '01957a00-0000-7000-8000-000000000001')`, "KUNCI_SALAH", "anon")}
+${harusGagal(`select public.tednas_mzone_komunitas((select mz from _j), '01957a00-0000-7000-8000-000000000001', true, false, ' X ')`, "NAMA_TIDAK_SAH", "anon")}
+${harusGagal(`select public.tednas_mzone_komunitas((select mz from _j), null, true, false, 'Tanpa Id')`, "KOMUNITAS_TIDAK_SAH", "anon")}
+set role anon;
+do $u$ declare a json; b json; c json; mz text := (select mz from _j); begin
+  assert public.tednas_mzone_komunitas(mz, '01957a00-0000-7000-8000-000000000001') is null, 'belum punya tautan → null';
+  a := public.tednas_mzone_komunitas(mz, '01957a00-0000-7000-8000-000000000001', true, false, '  Esports   Desa Sumber ', 'Kabupaten Malang', 'Jawa Timur', 'Andi PIC', '+62 812-3456-0001');
+  assert a->>'nama' = 'Esports Desa Sumber' and (a->>'aktif')::boolean and not (a->>'bawaan')::boolean and (a->>'mendaftar')::int = 0, 'tautan dibuat';
+  assert position('Andi' in a::text) = 0 and position('6281234560001' in a::text) = 0, 'jawaban tanpa data PIC';
+  b := public.tednas_mzone_komunitas(mz, '01957a00-0000-7000-8000-000000000001', true, false, 'Esports Desa Sumber Baru', 'Kabupaten Malang', 'Jawa Timur', '', '');
+  assert b->>'id' = a->>'id' and b->>'nama' = 'Esports Desa Sumber Baru', 'satu komunitas MZone = satu tautan; nama ikut diperbarui';
+  assert public.tednas_mzone_komunitas(mz, '01957a00-0000-7000-8000-000000000001')->>'id' = a->>'id', 'baca';
+  assert public.tednas_komunitas_info((a->>'id')::int)->>'nama' = 'Esports Desa Sumber Baru', 'tautannya dipakai formulir daftar seperti tautan buatan admin';
+  c := public.tednas_mzone_komunitas(mz, '01957a00-0000-7000-8000-000000000002', true, true, 'MZONETOUR', 'Kota Jakarta Selatan', 'DKI Jakarta', 'Pengurus', '');
+  assert (c->>'bawaan')::boolean and c->>'nama' = 'MZone Tour', 'penyelenggara TEDNas di MZone memakai komunitas bawaan';
+  c := public.tednas_mzone_komunitas(mz, '01957a00-0000-7000-8000-000000000003', true, true, 'Penyelenggara Palsu', '', '', '', '');
+  assert not (c->>'bawaan')::boolean and c->>'nama' = 'Penyelenggara Palsu', 'bawaan yang sudah tertaut tidak bisa diambil alih';
+end $u$;
+reset role;
+do $u$ declare a json; begin
+  assert (select pic_wa from public.tednas_komunitas where mzone_id = '01957a00-0000-7000-8000-000000000001') = '6281234560001', 'PIC dari pembuat pertama tetap (yang kedua kosong)';
+  assert (select count(*) from public.tednas_komunitas where bawaan) = 1, 'tetap satu bawaan';
+  assert (public.tednas_mzone_komunitas((select mz from _j), '01957a00-0000-7000-8000-000000000002')->>'mendaftar')::int
+         = (select count(*) from public.tednas_tim where komunitas_id = (select id from public.tednas_komunitas where bawaan)), 'hitungan tim bawaan';
+  update public.tednas_komunitas set aktif = false where mzone_id = '01957a00-0000-7000-8000-000000000001';
+  a := public.tednas_mzone_komunitas((select mz from _j), '01957a00-0000-7000-8000-000000000001', true, false, 'Esports Desa Sumber', '', '', '', '');
+  assert not (a->>'aktif')::boolean, 'dinonaktifkan admin → tidak dinyalakan ulang dari MZone';
+end $u$;
+${harusGagal(`insert into public.tednas_komunitas (nama, mzone_id) values ('Kembar', '01957a00-0000-7000-8000-000000000001')`, "duplicate key", "postgres")}
 \\echo SEMUA_LULUS
 `;
 
@@ -798,10 +832,12 @@ const migrasi14 = baca("supabase/migration-14-jalur-mzone-dasbor.sql");
 const migrasi15 = baca("supabase/migration-15-ubah-semua.sql");
 const migrasi16 = baca("supabase/migration-16-wa-pemain-twibbon.sql");
 const migrasi17 = baca("supabase/migration-17-drive-twibbon.sql");
+const migrasi18 = baca("supabase/migration-18-komunitas-mzone.sql");
 writeFileSync(f, ["\\set ON_ERROR_STOP 1", "\\set QUIET 1", "\\set VERBOSITY verbose", "set client_min_messages = warning;", baca("uji/sql-tiruan-supabase.sql"), skema,
   "-- migrasi 8, 9, 10, 12, 13, 14 & 15 dua kali: harus aman dijalankan ulang", migrasi, migrasi, migrasi9, migrasi9, migrasi10, migrasi10, migrasi12, migrasi12, migrasi13, migrasi13, migrasi14, migrasi14, migrasi15, migrasi15, SQL_BANTU, uji, uji2.replace("-- @@MIGRASI13@@", () => `reset role;\n${migrasi13}`)
     .replace("-- @@MIGRASI16@@", () => `reset role;\n-- migrasi 16 dua kali (aman diulang), di atas data yang sudah ada\n${migrasi16}\n${migrasi16}`)
-    .replace("-- @@MIGRASI17@@", () => `${migrasi17}\n${migrasi17}`)].join("\n")
+    .replace("-- @@MIGRASI17@@", () => `${migrasi17}\n${migrasi17}`)
+    .replace("-- @@MIGRASI18@@", () => `${migrasi18}\n${migrasi18}`)].join("\n")
   .replace(/^-- (\d+)\. (.*)$/gm, (_, n, t) => `\\echo LANGKAH ${n}: ${t}`));
 const NAMA = "tednas-uji-pg";
 const ssh = (cmd, input) => execFileSync("ssh", ["-o", "ConnectTimeout=15", "jot", cmd], { input, encoding: "utf8", stdio: ["pipe", "pipe", "pipe"] });
@@ -812,7 +848,7 @@ try {
   catch (e) { console.error(`GAGAL:\n${e.stdout ?? ""}\n${e.stderr ?? e.message}`); process.exitCode = 1; }
   if (keluar !== undefined) {
     if (!keluar.includes("SEMUA_LULUS")) { console.error(keluar); process.exitCode = 1; }
-    else console.log("uji SQL lulus (skema + migrasi 8–17 di Postgres 17, 19 kelompok)");
+    else console.log("uji SQL lulus (skema + migrasi 8–18 di Postgres 17, 20 kelompok)");
   }
 } finally {
   try { ssh(`docker rm -f ${NAMA} >/dev/null 2>&1; true`); } catch { /* */ }
