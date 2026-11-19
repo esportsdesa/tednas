@@ -7,5 +7,5 @@ window.APP_CONFIG = {
   // Web App Google Drive (deploy/drive/Code.gs). Kosong = berkas masih ke bucket Supabase.
   DRIVE_URL: 'https://script.google.com/macros/s/AKfycbxNJLVu4HNulN9iRLxHSgEsC0FQQNjmzJ166_tpil6vN0-fzDpE3QN9_3ZYzstjzNhYxw/exec',
   // Grup WhatsApp peserta, ditampilkan setelah pendaftaran berhasil. Kosong = kotak grup tidak tampil.
-  WA_GRUP: 'https://chat.whatsapp.com/IfHica6hwSxAsjwBEiPIG8'
+  WA_GRUP: 'https://chat.whatsapp.com/IjWC5X4ZZWHEuP2olsQgMs'
 };
