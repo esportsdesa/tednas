@@ -275,6 +275,7 @@ export const samarkanNik = (nik) => { const n = nikBersih(nik); return n.length 
  * @param sha     { [urutan]: { kolom: sha } } untuk berkas sama dipakai dua kali oleh satu pemain
  * → { hasil: "lolos"|"cek", ringkas, rincian, identitas }
  * Butir: s = "cek" (perlu dilihat admin) | "info" (dicatat saja) | "ok".
+ * Masalah profil ML (b = "profil_ml", s = "info") TIDAK menahan verifikasi (user 20 Nov 2026), lihat PROFIL_ML_TIDAK_MENAHAN.
  * Pemain yang sama di dua tim (NIK/ID ML/berkas sama) dinilai database (tednas_ai_ganda_hitung), bukan di sini.
  */
 export function nilaiTim(tim, baca, namaTim, sha = {}) {
@@ -352,15 +353,15 @@ export function nilaiTim(tim, baca, namaTim, sha = {}) {
       }
     }
 
-    // 3. Profil Mobile Legends
+    // 3. Profil Mobile Legends: dicatat, tidak menahan verifikasi (PROFIL_ML_TIDAK_MENAHAN).
     const ml = b.profil_ml;
-    if (!ml) cek("profil_ml", "Tangkapan layar profil ML tidak ada.");
-    else if (ml.galat) cek("profil_ml", ml.galat);
-    else if (!ml.profil_mlbb) cek("profil_ml", "Bukan tangkapan layar profil akun Mobile Legends.");
+    if (!ml) info("profil_ml", "Tangkapan layar profil ML tidak ada.");
+    else if (ml.galat) info("profil_ml", ml.galat);
+    else if (!ml.profil_mlbb) info("profil_ml", "Bukan tangkapan layar profil akun Mobile Legends.");
     else {
       const idAkun = nikBersih(ml.id_akun), server = nikBersih(ml.server);
       data.ml_nick = ml.nickname || "";
-      if (idAkun.length < 5) cek("profil_ml", "ID akun Mobile Legends tidak terlihat.");
+      if (idAkun.length < 5) info("profil_ml", "ID akun Mobile Legends tidak terlihat.");
       else { data.ml = server ? `${idAkun} (${server})` : idAkun; data._ml = server ? `${idAkun}(${server})` : idAkun; ok("profil_ml", `Akun ML ${data.ml}.`); }
     }
 
@@ -380,7 +381,9 @@ export function nilaiTim(tim, baca, namaTim, sha = {}) {
     const s = sha[p.urutan] || {}, dobel = new Map();
     for (const [k, h] of Object.entries(s)) if (h) dobel.set(h, [...(dobel.get(h) || []), k]);
     for (const kol of dobel.values()) {
-      if (kol.length > 1 && !kol.every((k) => FOLLOW.includes(k))) cek(kol[0].replace(/_path$/, ""), `Berkas yang sama persis diunggah untuk ${kol.map(labelKolom).join(" dan ")}.`);
+      if (kol.length < 2 || kol.every((k) => FOLLOW.includes(k))) continue;
+      const t = `Berkas yang sama persis diunggah untuk ${kol.map(labelKolom).join(" dan ")}.`;
+      if (dobelHanyaProfilMl(kol)) info("profil_ml", t); else cek(kol[0].replace(/_path$/, ""), t);
     }
 
     pemain.push({ u: p.urutan, nama: p.nama, butir, data: Object.fromEntries(Object.entries(data).filter(([k]) => !k.startsWith("_"))) });
@@ -410,9 +413,32 @@ export function nilaiTim(tim, baca, namaTim, sha = {}) {
   const catatan = [...timButir.filter((x) => x.s === "cek").map((x) => x.t),
     ...pemain.flatMap((p) => p.butir.filter((x) => x.s === "cek").map((x) => `P${p.u} ${p.nama}: ${x.t}`))];
   const hasil = catatan.length ? "cek" : "lolos";
+  return { hasil, ringkas: ringkasan(hasil, timButir, pemain), rincian: { tim: timButir, pemain }, identitas };
+}
+
+/* PROFIL_ML_TIDAK_MENAHAN — keputusan user 20 Nov 2026: "yang salahnya cuman karena snapshot profile mlbb doang
+   langsung lolosin aja". Masalah tangkapan layar profil ML (tidak ada, bukan profil, ID tidak terlihat, tak terbaca,
+   atau profil ML memakai berkas lain yang tetap dinilai sendiri) dicatat sebagai "info" dan tetap dibaca ulang model
+   besar demi ID ML (dipakai masuk MZone), tetapi tim tetap lolos. Pemain ganda lintas tim (ID ML/screenshot sama di
+   tim lain) tetap ditahan database (tednas_ai_ganda_hitung). */
+export const catatanProfilMl = (x) => x.b === "profil_ml" && x.s === "info";
+
+/** Berkas kembar yang hanya membuat profil ML salah: profil ML memakai satu berkas lain (identitas/follow/izin yang
+ *  tetap dinilai sendiri), atau memakai bukti follow saja. */
+export function dobelHanyaProfilMl(kol) {
+  const lain = kol.filter((k) => k !== "profil_ml_path");
+  return lain.length < kol.length && (lain.length <= 1 || lain.every((k) => FOLLOW.includes(k)));
+}
+
+/** Ringkasan satu baris untuk admin; dipakai juga saat hasil lama dinilai ulang tanpa membaca berkas. */
+export function ringkasan(hasil, timButir, pemain) {
+  const catatan = [...timButir.filter((x) => x.s === "cek").map((x) => x.t),
+    ...pemain.flatMap((p) => p.butir.filter((x) => x.s === "cek").map((x) => `P${p.u} ${p.nama}: ${x.t}`))];
+  const ml = pemain.flatMap((p) => p.butir.filter(catatanProfilMl).map((x) => `P${p.u} ${p.nama}: ${x.t}`));
   const jmlBerkas = pemain.reduce((n, p) => n + p.butir.filter((x) => x.s === "ok").length, 0);
-  const ringkas = hasil === "lolos" ? `Semua sesuai (${jmlBerkas} pemeriksaan).` : `${catatan.length} catatan: ${catatan.join(" · ")}`;
-  return { hasil, ringkas: ringkas.slice(0, 500), rincian: { tim: timButir, pemain }, identitas };
+  const teks = hasil !== "lolos" ? `${catatan.length} catatan: ${catatan.join(" · ")}`
+    : ml.length ? `Lolos; profil ML tidak menahan verifikasi: ${ml.join(" · ")}` : `Semua sesuai (${jmlBerkas} pemeriksaan).`;
+  return teks.slice(0, 500);
 }
 
 const SHA_LINTAS = ["profil_ml_path", "follow_esports_path", "follow_ppdt_path"];

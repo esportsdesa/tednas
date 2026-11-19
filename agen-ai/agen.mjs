@@ -289,14 +289,15 @@ export const VERSI_LENGKAP = N.VERSI_AGEN * 10 + 1, VERSI_TUNDA = N.VERSI_AGEN *
 const KOLOM_BUTIR = { identitas: "dokumen_path", profil_ml: "profil_ml_path", follow_esports: "follow_esports_path", follow_ppdt: "follow_ppdt_path", izin: "izin_path" };
 
 /** Berkas yang ditolak di tahap 9b dan layak dibaca ulang model besar: catatan "cek" atas BACAAN model, termasuk
- *  gambar yang terlalu besar untuk konteks 9b (bukan berkas hilang, tidak diunggah, atau berkas kembar). */
+ *  gambar yang terlalu besar untuk konteks 9b (bukan berkas hilang, tidak diunggah, atau berkas kembar). Catatan profil
+ *  ML ("info", tidak menahan sejak 20 Nov) tetap dibaca ulang supaya ID ML untuk masuk MZone terbaca. */
 export function berkasUlang(t, n, baca, berkas) {
   const ulang = [];
   // Bukti twibbon tim yang ditolak 9b juga dibaca ulang model besar.
   const tw = baca[0]?.twibbon;
   if (n.rincian.tim.some((b) => b.b === "twibbon" && b.s === "cek") && tw && (!tw.galat || tw.besar) && berkas[0]?.twibbon_path) ulang.push({ u: 0, kolom: "twibbon_path" });
   for (const p of n.rincian.pemain) {
-    const kolom = new Set(p.butir.filter((b) => b.s === "cek" && !/^Berkas yang sama persis/.test(b.t)).map((b) => KOLOM_BUTIR[b.b]).filter(Boolean));
+    const kolom = new Set(p.butir.filter((b) => (b.s === "cek" || N.catatanProfilMl(b)) && !/^Berkas yang sama persis/.test(b.t)).map((b) => KOLOM_BUTIR[b.b]).filter(Boolean));
     for (const k of kolom) {
       const isi = baca[p.u]?.[KUNCI_BACA[k]];
       if (isi && (!isi.galat || isi.besar) && berkas[p.u]?.[k]) ulang.push({ u: p.u, kolom: k });

@@ -121,16 +121,35 @@ await uji("nilaiTim: tiap pelanggaran jadi catatan 'cek' yang terbaca admin", ()
   const n = N.nilaiTim({ ...t, nama_tim: "Garuda Esports" }, baca, { pantas: true, alasan: "" },
     { 3: { profil_ml_path: "x1", follow_esports_path: "x1" } });
   assert.equal(n.hasil, "cek");
-  assert.ok(n.ringkas.length <= 500 && n.ringkas.startsWith("7 catatan:"), n.ringkas.slice(0, 40));
+  assert.ok(n.ringkas.length <= 500 && n.ringkas.startsWith("5 catatan:"), n.ringkas.slice(0, 40));
   const semua = [...n.rincian.tim.filter((b) => b.s === "cek").map((b) => b.t),
     ...n.rincian.pemain.flatMap((p) => p.butir.filter((b) => b.s === "cek").map((b) => `P${p.u} ${p.nama}: ${b.t}`))].join(" · ");
   for (const pola of [/P1 Budi Santoso: Umur 15 tahun: surat izin/, /P2 Siti Aminah: .*@ditjen_ppdt BELUM diikuti/,
     /P4 Dewi Lestari: Nama di dokumen "AGUS SALIMUDIN WIJAYA KUSUMA" tidak sama dengan nama terdaftar "Dewi Lestari"/,
-    /P3 Rizky Ramadhan: Domisili di Kabupaten Sleman, Daerah Istimewa Yogyakarta, sedangkan tim mewakili Kabupaten Malang, Jawa Timur\. Pemain satu tim harus satu kabupaten\/kota/, /P5 Agus Salim: Umur 37/, /P5 Agus Salim: Bukan tangkapan layar profil/,
-    /P3 Rizky Ramadhan: Berkas yang sama persis diunggah untuk profil ML dan follow @esportsdesa.official/]) {
+    /P3 Rizky Ramadhan: Domisili di Kabupaten Sleman, Daerah Istimewa Yogyakarta, sedangkan tim mewakili Kabupaten Malang, Jawa Timur\. Pemain satu tim harus satu kabupaten\/kota/, /P5 Agus Salim: Umur 37/]) {
     assert.match(semua, pola);
   }
+  // Profil ML (user 20 Nov): dicatat "info", tidak ikut catatan yang menahan.
+  const ml = n.rincian.pemain.flatMap((p) => p.butir.filter(N.catatanProfilMl).map((b) => `P${p.u} ${p.nama}: ${b.t}`)).join(" · ");
+  assert.match(ml, /P5 Agus Salim: Bukan tangkapan layar profil/);
+  assert.match(ml, /P3 Rizky Ramadhan: Berkas yang sama persis diunggah untuk profil ML dan follow @esportsdesa.official/);
+  assert.doesNotMatch(semua, /profil ML|Mobile Legends/);
   assert.equal(N.namaCocok("Agus Salim", "AGUS SALIMUDIN WIJAYA KUSUMA"), true, "Salim ⊂ Salimudin (awalan) diterima");
+});
+
+await uji("profil ML saja yang salah → tetap lolos dan dicatat (user 20 Nov); profil ML + dua berkas lain kembar tetap cek", () => {
+  const baca = Object.fromEntries(TIM.pemain.map((p, i) => [p.urutan, bacaBaik(p, i)]));
+  baca[2].profil_ml = { profil_mlbb: true, nickname: "x", id_akun: "", server: "" };
+  baca[4].profil_ml = { profil_mlbb: false, nickname: "", id_akun: "", server: "" };
+  baca[5].profil_ml = { galat: "Gambar terlalu besar untuk dibaca model: cek manual." };
+  const n = N.nilaiTim(TIM, baca, null, { 1: { dokumen_path: "S", profil_ml_path: "S" } });
+  assert.equal(n.hasil, "lolos", n.ringkas);
+  assert.match(n.ringkas, /^Lolos; profil ML tidak menahan verifikasi: P1 Budi Santoso: Berkas yang sama persis diunggah untuk identitas dan profil ML\. · P2 Siti Aminah: ID akun Mobile Legends tidak terlihat\. · P4 Dewi Lestari: Bukan tangkapan layar profil/);
+  assert.equal(n.rincian.pemain.flatMap((p) => p.butir).filter((b) => b.s === "cek").length, 0);
+  const m = N.nilaiTim(TIM, baca, null, { 1: { dokumen_path: "S", profil_ml_path: "S", follow_ppdt_path: "S" } });
+  assert.equal(m.hasil, "cek", "identitas dipakai juga untuk bukti follow: bukan hanya profil ML");
+  assert.equal(N.dobelHanyaProfilMl(["profil_ml_path", "follow_esports_path", "follow_ppdt_path"]), true);
+  assert.equal(N.dobelHanyaProfilMl(["dokumen_path", "izin_path"]), false);
 });
 
 await uji("nilaiTim: izin diperiksa bila < 17; berkas lama = cek; kartu pelajar tanpa alamat = cek", () => {
@@ -384,7 +403,7 @@ await uji("pool: tanpa mmproj = belum siap (pool+armada pakai 9b); gambar tak te
   assert.equal(W1.catat.model.length, 21); assert.equal(W1.catat.simpan[0].p_hasil, "lolos");
 
   mesin("pool");
-  const W2 = duniaPool({ chat: (isi) => (JSON.stringify(isi).includes(Buffer.from("BERKAS|gdrive/PROFILML-20000.png").toString("base64"))
+  const W2 = duniaPool({ chat: (isi) => (JSON.stringify(isi).includes(Buffer.from("BERKAS|gdrive/IDENTITAS-20000.jpg").toString("base64"))
     ? new Response(JSON.stringify({ error: { code: 400, message: "failed to load image or audio file" } }), { status: 400 }) : null) });
   await A.putaran({ fetch: W2.f, pdfKeGambar: W2.pdfKeGambar });
   assert.equal(W2.catat.simpan[0].p_hasil, "cek");
@@ -448,8 +467,8 @@ await uji("gabungan: pool belum siap → hasil 9b disimpan 'menunggu cek ulang' 
   rmSync(join(BROKER, "pool-head.txt"));
   await A.putaran({ fetch: W.f, pdfKeGambar: W.pdfKeGambar });
   const s = W.catat.simpan[0];
-  assert.equal(s.p_hasil, "cek"); assert.equal(s.p_versi, A.VERSI_TUNDA);
-  assert.match(s.p_ringkas, /^Menunggu cek ulang model besar untuk 1 berkas\. 1 catatan: P2 Siti Aminah: ID akun Mobile Legends tidak terlihat/);
+  assert.equal(s.p_hasil, "lolos", "profil ML tidak menahan; tetap ditunda untuk dibaca ulang 35B"); assert.equal(s.p_versi, A.VERSI_TUNDA);
+  assert.match(s.p_ringkas, /^Menunggu cek ulang model besar untuk 1 berkas\. Lolos; profil ML tidak menahan verifikasi: P2 Siti Aminah: ID akun Mobile Legends tidak terlihat/);
   assert.equal(s.p_rincian.tunggu, 1);
   assert.equal(W.catat.pool.length, 0);
   assert.ok(existsSync(join(BROKER, "want-heavy")), "pool diminta");
@@ -466,7 +485,7 @@ await uji("gabungan: pool gagal di tengah tahap 35B → tetap disimpan 'menunggu
   const W = duniaPool({ worker: tolakMl2, chat: () => new Response(JSON.stringify({ error: { message: "Remote RPC server crashed" } }), { status: 500 }) });
   await A.putaran({ fetch: W.f, pdfKeGambar: W.pdfKeGambar });
   const s = W.catat.simpan[0];
-  assert.equal(s.p_hasil, "cek"); assert.equal(s.p_versi, A.VERSI_TUNDA);
+  assert.equal(s.p_hasil, "lolos"); assert.equal(s.p_versi, A.VERSI_TUNDA);
   assert.equal(W.catat.pool.length, 1, "sekali coba lalu ditunda (tidak menahan antrean)");
 });
 
@@ -494,18 +513,18 @@ await uji("gabungan: gambar melebihi konteks 9b → tidak diulang ke worker lain
   assert.equal(W2.catat.simpan[0].p_versi, A.VERSI_TUNDA);
   assert.equal(W2.catat.simpan[0].p_rincian.tunggu, 1);
 
-  // Konteks 35B pun habis → catatan cek untuk admin, bukan galat yang diulang tiap 30 menit.
+  // Konteks 35B pun habis → catatan (profil ML: info, tidak menahan), bukan galat yang diulang tiap 30 menit.
   mesin("gabungan");
   const W3 = duniaPool({ worker: konteksMl2, chat: () => new Response(JSON.stringify({ error: { code: 400, message: KONTEKS.replace("4096", "8192") } }), { status: 400 }) });
   await A.putaran({ fetch: W3.f, pdfKeGambar: W3.pdfKeGambar });
-  assert.equal(W3.catat.simpan[0].p_hasil, "cek");
+  assert.equal(W3.catat.simpan[0].p_hasil, "lolos");
   assert.match(W3.catat.simpan[0].p_ringkas, /P2 Siti Aminah: Gambar terlalu besar untuk dibaca model: cek manual/);
 
-  // Mode armada saja → langsung catatan cek.
+  // Mode armada saja → langsung dicatat.
   mesin("armada");
   const W4 = dunia({ worker: konteksMl2 });
   await A.putaran({ fetch: W4.f, pdfKeGambar: W4.pdfKeGambar });
-  assert.equal(W4.catat.simpan[0].p_hasil, "cek");
+  assert.equal(W4.catat.simpan[0].p_hasil, "lolos");
   assert.match(W4.catat.simpan[0].p_ringkas, /Gambar terlalu besar untuk dibaca model/);
   assert.equal(W4.catat.model.filter((x) => JSON.stringify(x).includes(ML2)).length, 1);
 });
