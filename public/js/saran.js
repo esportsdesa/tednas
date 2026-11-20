@@ -1,4 +1,4 @@
-/* Catatan agen AI (agen-ai/nilai.mjs, ditulis untuk admin) → saran yang bisa langsung dikerjakan kapten.
+/* Catatan agen AI (ditulis untuk admin) → saran yang bisa langsung dikerjakan kapten.
    Dipakai di dua tempat:
    - admin.js: pesan WhatsApp "WA Kapten" (satu klik admin, pesan siap kirim);
    - perbaiki.js: halaman perbaikan berkas yang dibuka kapten dari tautan di pesan itu.

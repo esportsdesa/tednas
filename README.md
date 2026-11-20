@@ -31,7 +31,7 @@ yang terdaftar di dua tim.
 - Ada catatan: tim tetap Menunggu, dan catatannya tampil di kolom **Cek AI** halaman admin.
 - Status yang diubah admin tidak pernah ditimpa AI.
 
-Panduan: [agen-ai/README.md](agen-ai/README.md). Migrasi: `supabase/migration-10-ai-periksa.sql`.
+Kode agen dikelola panitia di luar repo ini. Migrasi: `supabase/migration-10-ai-periksa.sql`.
 Selama migrasi itu belum dijalankan, halaman admin tetap berjalan seperti biasa tanpa kolom AI.
 
 ## Kabari kapten & perbaikan berkas

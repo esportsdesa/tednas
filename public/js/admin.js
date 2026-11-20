@@ -120,7 +120,7 @@
     muatRingkasAi();
   }
 
-  /* ---------- Cek AI (agen-ai/ di server): lolos semua = langsung Terverifikasi; perlu dicek = admin memutuskan ---------- */
+  /* ---------- Cek AI (agen AI panitia di server): lolos semua = langsung Terverifikasi; perlu dicek = admin memutuskan ---------- */
   async function muatRingkasAi() {
     $('#t-ai').hidden = $('#t-ai-bar').hidden = !DB.aiAda;
     if (!DB.aiAda) return;

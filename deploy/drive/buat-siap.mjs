@@ -3,7 +3,7 @@
  *   .siap/rahasia.txt   kunci bersama Supabase ↔ Apps Script (dibuat sekali, dipakai ulang)
  *   .siap/supabase.sql  migration-8-drive.sql + pemasangan kunci → tempel di Supabase > SQL Editor
  *   .siap/Code.gs       deploy/drive/Code.gs berkunci → tempel di script.google.com akun pemilik Drive
- *                       (KUNCI_AI ikut diisi bila .siap/rahasia-ai.txt ada — agen AI, lihat agen-ai/README.md)
+ *                       (KUNCI_AI ikut diisi bila .siap/rahasia-ai.txt ada — agen AI panitia)
  *   node deploy/drive/buat-siap.mjs
  */
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
