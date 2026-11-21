@@ -32,6 +32,9 @@ const daftar = (nama, wa, desa, p, captcha = "lulus") =>
 // Migrasi 16: daftar dengan WA pemain 2–6 + bukti twibbon (parameter ke-13).
 const daftar16 = (nama, wa, desa, p, tw, captcha = "lulus") =>
   `select public.tednas_daftar(${q(nama)}, ${q(wa)}, '35', 'JAWA TIMUR', '35.07', 'KAB. MALANG', 'Pakis', ${q(desa)}, 'Mangliawan', ${q(JSON.stringify(p))}::jsonb, ${q(captcha)}, null, ${tw == null ? "null" : q(tw)})`;
+// Migrasi 19: kode tim pengajak (parameter ke-14).
+const daftar19 = (nama, wa, desa, p, tw, pengajak) =>
+  `public.tednas_daftar(${q(nama)}, ${q(wa)}, '35', 'JAWA TIMUR', '35.07', 'KAB. MALANG', 'Pakis', ${q(desa)}, 'Mangliawan', ${q(JSON.stringify(p))}::jsonb, 'lulus', null, ${q(tw)}, ${pengajak == null ? "null" : pengajak.startsWith("sql:") ? pengajak.slice(4) : q(pengajak)})`;
 const pemain16 = (awal, depan) => pemain(awal).map((x, i) => ({ ...x, ...(i ? { wa: `${depan}${i + 1}` } : {}), dokumen_jenis: i === 3 ? "SIM" : i === 4 ? "KIA" : x.dokumen_jenis }));
 const p16a = pemain16(50, "08125550100"), p16b = pemain16(51, "08125550200");
 const tw16a = tanda(`gdrive/${id(5091)}.jpg`);
@@ -817,6 +820,47 @@ do $u$ declare a json; begin
   assert not (a->>'aktif')::boolean, 'dinonaktifkan admin → tidak dinyalakan ulang dari MZone';
 end $u$;
 ${harusGagal(`insert into public.tednas_komunitas (nama, mzone_id) values ('Kembar', '01957a00-0000-7000-8000-000000000001')`, "duplicate key", "postgres")}
+-- @@MIGRASI19@@
+
+-- 21. Peserta ajak peserta: kode tim pengajak saat daftar + papan peringkat untuk MZone (migrasi 19)
+create temp table _p as select (select kode from public.tednas_tim order by created_at limit 1) as k1,
+  (select kode from public.tednas_tim order by created_at offset 1 limit 1) as k2;
+grant select on _p to anon;
+${harusGagal(`select ${daftar19("Tim Ajak Salah", "081255560001", "35.07.18.2001", pemain16(60, "08125556010"), tanda(`gdrive/${id(6091)}.jpg`), "TED-99999")}`, "PENGAJAK_TIDAK_ADA", "anon")}
+set role anon;
+do $u$ declare a json; b json; c json; k1 text := (select k1 from _p); begin
+  a := ${daftar19("Tim Ajak A", "081255560001", "35.07.18.2001", pemain16(60, "08125556010"), tanda(`gdrive/${id(6091)}.jpg`), "sql:' ted-' || substr(k1, 5) || ' '")};
+  assert a->>'pengajak' = k1, 'kode pengajak (huruf kecil + spasi) dikenali: ' || coalesce(a->>'pengajak', 'null');
+  b := ${daftar19("Tim Ajak B", "081255561001", "35.07.18.2001", pemain16(61, "08125556110"), tanda(`gdrive/${id(6191)}.jpg`), "sql:k1")};
+  assert b->>'pengajak' = k1, 'tim kedua dengan pengajak yang sama';
+  c := ${daftar19("Tim Tanpa Ajak", "081255562001", "35.07.18.2001", pemain16(62, "08125556210"), tanda(`gdrive/${id(6291)}.jpg`), "")};
+  assert c->>'pengajak' is null, 'kode kosong = tanpa pengajak';
+end $u$;
+set role anon;
+${daftar16("Tim Panggil Lama", "081255563001", "35.07.18.2001", pemain16(63, "08125556310"), tanda(`gdrive/${id(6391)}.jpg`))};
+reset role;
+${harusGagal(`select public.tednas_mzone_pengajak(repeat('0', 64))`, "KUNCI_SALAH", "anon")}
+${harusGagal(`select public.tednas_mzone_pengajak((select db from _j))`, "KUNCI_SALAH", "anon")}
+do $u$ declare j json; e json; k1 text := (select k1 from _p); k2 text := (select k2 from _p); begin
+  assert (select pengajak_id is null from public.tednas_tim where nama_tim = 'Tim Panggil Lama'), 'pemanggil lama (13 parameter) tetap jalan, tanpa pengajak';
+  j := public.tednas_mzone_pengajak((select mz from _j));
+  assert json_array_length(j) = 1, 'hanya tim yang punya rujukan: ' || j::text;
+  e := j->0;
+  assert e->>'kode' = k1 and (e->>'terverifikasi')::int = 0 and (e->>'menunggu')::int = 2 and e->>'terakhir' is null, 'dua rujukan belum terverifikasi: ' || e::text;
+  update public.tednas_tim set status = 'terverifikasi' where nama_tim = 'Tim Ajak A';
+  update public.tednas_tim set pengajak_id = (select id from public.tednas_tim where kode = k2) where nama_tim = 'Tim Tanpa Ajak';
+  j := public.tednas_mzone_pengajak((select mz from _j));
+  assert json_array_length(j) = 2 and j->0->>'kode' = k1 and j->1->>'kode' = k2, 'urut terverifikasi terbanyak: ' || j::text;
+  assert (j->0->>'terverifikasi')::int = 1 and (j->0->>'menunggu')::int = 1 and j->0->>'terakhir' is not null, 'hitungan sesudah verifikasi';
+  assert position('6281255560001' in j::text) = 0 and position('Pemain 60' in j::text) = 0 and position('Tim Ajak A' in j::text) = 0, 'tanpa nomor WA, nama pemain, atau nama tim rujukan';
+  assert (j->0)::jsonb ?& array['nama_tim', 'desa', 'kabupaten', 'provinsi', 'status'], 'kolom papan';
+end $u$;
+${harusGagal(`update public.tednas_tim set pengajak_id = id where nama_tim = 'Tim Ajak B'`, "tednas_tim_pengajak_bukan_diri", "postgres")}
+do $u$ begin
+  delete from public.tednas_pemain where tim_id = (select id from public.tednas_tim where kode = (select k2 from _p));
+  delete from public.tednas_tim where kode = (select k2 from _p);
+  assert (select pengajak_id is null from public.tednas_tim where nama_tim = 'Tim Tanpa Ajak'), 'tim pengajak dihapus → rujukan dilepas';
+end $u$;
 \\echo SEMUA_LULUS
 `;
 
@@ -833,11 +877,13 @@ const migrasi15 = baca("supabase/migration-15-ubah-semua.sql");
 const migrasi16 = baca("supabase/migration-16-wa-pemain-twibbon.sql");
 const migrasi17 = baca("supabase/migration-17-drive-twibbon.sql");
 const migrasi18 = baca("supabase/migration-18-komunitas-mzone.sql");
+const migrasi19 = baca("supabase/migration-19-pengajak.sql");
 writeFileSync(f, ["\\set ON_ERROR_STOP 1", "\\set QUIET 1", "\\set VERBOSITY verbose", "set client_min_messages = warning;", baca("uji/sql-tiruan-supabase.sql"), skema,
   "-- migrasi 8, 9, 10, 12, 13, 14 & 15 dua kali: harus aman dijalankan ulang", migrasi, migrasi, migrasi9, migrasi9, migrasi10, migrasi10, migrasi12, migrasi12, migrasi13, migrasi13, migrasi14, migrasi14, migrasi15, migrasi15, SQL_BANTU, uji, uji2.replace("-- @@MIGRASI13@@", () => `reset role;\n${migrasi13}`)
     .replace("-- @@MIGRASI16@@", () => `reset role;\n-- migrasi 16 dua kali (aman diulang), di atas data yang sudah ada\n${migrasi16}\n${migrasi16}`)
     .replace("-- @@MIGRASI17@@", () => `${migrasi17}\n${migrasi17}`)
-    .replace("-- @@MIGRASI18@@", () => `${migrasi18}\n${migrasi18}`)].join("\n")
+    .replace("-- @@MIGRASI18@@", () => `${migrasi18}\n${migrasi18}`)
+    .replace("-- @@MIGRASI19@@", () => `${migrasi19}\n${migrasi19}`)].join("\n")
   .replace(/^-- (\d+)\. (.*)$/gm, (_, n, t) => `\\echo LANGKAH ${n}: ${t}`));
 const NAMA = "tednas-uji-pg";
 const ssh = (cmd, input) => execFileSync("ssh", ["-o", "ConnectTimeout=15", "jot", cmd], { input, encoding: "utf8", stdio: ["pipe", "pipe", "pipe"] });
@@ -848,7 +894,7 @@ try {
   catch (e) { console.error(`GAGAL:\n${e.stdout ?? ""}\n${e.stderr ?? e.message}`); process.exitCode = 1; }
   if (keluar !== undefined) {
     if (!keluar.includes("SEMUA_LULUS")) { console.error(keluar); process.exitCode = 1; }
-    else console.log("uji SQL lulus (skema + migrasi 8–18 di Postgres 17, 20 kelompok)");
+    else console.log("uji SQL lulus (skema + migrasi 8–19 di Postgres 17, 21 kelompok)");
   }
 } finally {
   try { ssh(`docker rm -f ${NAMA} >/dev/null 2>&1; true`); } catch { /* */ }

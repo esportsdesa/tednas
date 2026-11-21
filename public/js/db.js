@@ -58,8 +58,14 @@
           p_kecamatan: d.kecamatan, p_desa_kode: d.desa_kode, p_desa: d.desa,
           p_pemain: d.pemain, p_captcha: d.captcha,
           ...(d.komunitas ? { p_komunitas: d.komunitas } : {}),
-          p_twibbon: d.twibbon || null // migrasi 16: bukti twibbon 1 per tim
+          p_twibbon: d.twibbon || null, // migrasi 16: bukti twibbon 1 per tim
+          ...(d.pengajak ? { p_pengajak: d.pengajak } : {}) // migrasi 19: kode tim pengajak
         }));
+      },
+      /* Kode tim pengajak (migrasi 19): dicek ke data publik tim (yang sama dengan halaman Rekap Tim). */
+      async timPengajak(kode) {
+        const r = cek(await sb.from('tednas_tim_publik').select('kode,nama_tim,desa,kabupaten,status').eq('kode', kode).limit(1));
+        return (r && r[0]) || null;
       },
       /* Komunitas ToT (migrasi 13) */
       async komunitasInfo(id) { return cek(await sb.rpc('tednas_komunitas_info', { p_id: id })); },
@@ -234,9 +240,12 @@
         const kode = 'TED-' + String(seq).padStart(5, '0');
         const semuaKom = baca('komunitas', []);
         const kom = semuaKom.find((k) => k.id === d.komunitas && k.aktif) || semuaKom.find((k) => k.bawaan);
-        t.push({ id: acakId(), kode, nama_tim: d.nama_tim, nama_kapten: d.pemain[0].nama, wa_kapten: wa, prov_kode: d.prov_kode, provinsi: d.provinsi, kab_kode: d.kab_kode, kabupaten: d.kabupaten, kecamatan: d.kecamatan, desa_kode: d.desa_kode, desa: d.desa, pemain: d.pemain.map((p, i) => ({ ...p, urutan: i + 1 })), twibbon_path: d.twibbon, form_versi: 2, status: 'menunggu', komunitas_id: kom ? kom.id : null, created_at: new Date().toISOString() });
-        tulis('tim', t); return { kode, komunitas: kom ? kom.id : null };
+        const ajak = d.pengajak ? t.find((x) => x.kode === d.pengajak) : null;
+        if (d.pengajak && !ajak) salah('PENGAJAK_TIDAK_ADA');
+        t.push({ id: acakId(), kode, nama_tim: d.nama_tim, nama_kapten: d.pemain[0].nama, wa_kapten: wa, prov_kode: d.prov_kode, provinsi: d.provinsi, kab_kode: d.kab_kode, kabupaten: d.kabupaten, kecamatan: d.kecamatan, desa_kode: d.desa_kode, desa: d.desa, pemain: d.pemain.map((p, i) => ({ ...p, urutan: i + 1 })), twibbon_path: d.twibbon, form_versi: 2, status: 'menunggu', komunitas_id: kom ? kom.id : null, pengajak_id: ajak ? ajak.id : null, created_at: new Date().toISOString() });
+        tulis('tim', t); return { kode, komunitas: kom ? kom.id : null, pengajak: ajak ? ajak.kode : null };
       },
+      async timPengajak(kode) { const x = tim().find((y) => y.kode === kode); return x ? { kode: x.kode, nama_tim: x.nama_tim, desa: x.desa, kabupaten: x.kabupaten, status: x.status } : null; },
       async komunitasInfo(id) { const k = baca('komunitas', []).find((x) => x.id === id && x.aktif); return k ? { id: k.id, nama: k.nama, kota: k.kota, provinsi: k.provinsi } : null; },
       async komunitasAdmin() {
         const t = tim();

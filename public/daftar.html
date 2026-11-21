@@ -68,6 +68,9 @@
         <label class="isian">No. HP (WhatsApp) kapten
           <input type="tel" id="wa" inputmode="tel" placeholder="08xxxxxxxxxx" autocomplete="tel" maxlength="20">
           <small>Jadwal dan lawan dikabari lewat nomor ini. Tidak tampil di website.</small></label>
+        <label class="isian">Kode tim yang mengajak <span class="opsional">(boleh kosong)</span>
+          <input type="text" id="pengajak" maxlength="12" placeholder="TED-00054" autocomplete="off" autocapitalize="characters" spellcheck="false">
+          <small id="pengajak-info">Diajak tim lain? Isi kode timnya supaya tim itu dapat poin di papan peringkat ajak tim.</small></label>
         <div class="pemain-wa">
           <label class="isian">Nama pemain 2
             <input type="text" id="pemain-2" maxlength="80" autocomplete="off"></label>
@@ -141,6 +144,11 @@
       <div class="kode-bukti" id="kode"></div>
       <p id="sukses-teks"></p>
       <p class="sukses-komunitas" id="sukses-komunitas" hidden></p>
+      <div class="ajak-tim" id="ajak-tim">
+        <p><b>Ajak tim desa lain, kumpulkan poin.</b><br>Tim yang mendaftar dengan kode timmu, lalu terverifikasi, menambah poinmu di papan peringkat ajak tim.</p>
+        <p class="ajak-tautan"><span id="ajak-tautan"></span></p>
+        <a class="btn btn-wa" id="ajak-wa" href="#" target="_blank" rel="noopener">Bagikan lewat WhatsApp</a>
+      </div>
       <p class="bantu">Panitia akan cek berkasnya dulu, lalu menghubungi kapten lewat WhatsApp.</p>
       <div class="wa-grup" id="wa-grup" hidden>
         <p><b>Langkah terakhir: masuk grup WhatsApp peserta.</b><br>Jadwal dan pengumuman turnamen dikirim di sana. Bagikan juga link ini ke semua pemain timmu.</p>

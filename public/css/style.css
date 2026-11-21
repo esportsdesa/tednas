@@ -271,6 +271,13 @@ label.isian.perlu input { border-color: var(--merah); }
 /* ---------- Komunitas ToT (spanduk di formulir daftar, tab admin) ---------- */
 .komunitas-pita { margin-bottom: 18px; padding: 12px 14px; background: #fff; border: 2px solid var(--magenta); border-radius: 3px; font-size: 14.5px; }
 .sukses-komunitas { font-weight: 700; color: var(--magenta); }
+/* Program ajak tim (migrasi 19) */
+.opsional { font-weight: 500; color: var(--teks-2); font-size: 13px; }
+#pengajak-info.ok { color: #0f7a46; font-weight: 700; }
+#pengajak-info.salah { color: #b3261e; font-weight: 700; }
+.ajak-tim { max-width: 520px; margin: 18px auto 0; padding: 16px 18px; border: 2px solid var(--emas); border-radius: 6px; background: rgba(255, 200, 40, .1); }
+.ajak-tim p { margin: 0 0 10px; font-size: 15px; }
+.ajak-tautan { font-weight: 700; word-break: break-all; }
 .k-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 0 14px; align-items: end; margin-bottom: 6px; }
 .k-form label.isian { margin-bottom: 12px; }
 .k-tombol { display: flex; gap: 12px; align-items: center; margin-bottom: 12px; }

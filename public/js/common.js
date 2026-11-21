@@ -102,6 +102,25 @@
   };
   { const k = new URLSearchParams(location.search).get('k'); if (/^\d{1,6}$/.test(k || '')) U.komunitas.simpan(Number(k)); }
 
+  /* Kode tim pengajak (migrasi 19, program "peserta ajak peserta"; papan peringkatnya di MZone). Kodenya kode tim biasa
+     (TED-00054); esportsdesa.id/r/TED-00054 dialihkan ke daftar?r=TED-00054 (vercel.json). Disimpan 30 hari di browser
+     seperti tautan komunitas, dan bisa diketik sendiri di formulir. U.kodeTim menyeragamkan "ted 54" → "TED-00054". */
+  U.kodeTim = (s) => {
+    const m = /^\s*(?:TED)?[\s-]*0*(\d{1,5})\s*$/i.exec(String(s || ''));
+    return m && Number(m[1]) > 0 ? 'TED-' + m[1].padStart(5, '0') : null;
+  };
+  const KUNCI_PENGAJAK = 'tednas_ref_tim';
+  U.pengajak = {
+    ambil() {
+      const r = U.kodeTim(new URLSearchParams(location.search).get('r'));
+      if (r) return r;
+      try { const x = JSON.parse(localStorage.getItem(KUNCI_PENGAJAK)); return x && Date.now() - x.pada < 30 * 864e5 ? U.kodeTim(x.kode) : null; } catch (e) { return null; }
+    },
+    simpan(kode) { try { localStorage.setItem(KUNCI_PENGAJAK, JSON.stringify({ kode, pada: Date.now() })); } catch (e) { /* mode privat */ } },
+    hapus() { try { localStorage.removeItem(KUNCI_PENGAJAK); } catch (e) { /* mode privat */ } }
+  };
+  { const r = U.kodeTim(new URLSearchParams(location.search).get('r')); if (r) U.pengajak.simpan(r); }
+
   U.pesan = (t, jenis) => {
     let w = U.$('#toasts');
     if (!w) { w = document.createElement('div'); w.id = 'toasts'; w.setAttribute('aria-live', 'polite'); document.body.append(w); }

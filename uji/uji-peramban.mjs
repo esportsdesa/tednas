@@ -86,7 +86,13 @@ async function supabase(req, res, u) {
     // pg_net: setelah commit database mengirim kabar "tim" ke Web App.
     const k = W.kabar("tim", { tim: W.paket(t) });
     assert.equal(k.ok, true, JSON.stringify(k));
-    return kirim(200, { kode: t.kode, komunitas: b.p_komunitas ?? null });
+    if (b.p_pengajak !== undefined && b.p_pengajak !== "TED-00054") return kirim(400, { code: "P0001", message: "PENGAJAK_TIDAK_ADA" });
+    return kirim(200, { kode: t.kode, komunitas: b.p_komunitas ?? null, pengajak: b.p_pengajak ?? null });
+  }
+  // Migrasi 19: kode tim pengajak dicek ke data publik tim.
+  if (u.pathname === "/sb/rest/v1/tednas_tim_publik") {
+    return kirim(200, u.searchParams.get("kode") === "eq.TED-00054"
+      ? [{ kode: "TED-00054", nama_tim: "DESA CIRINTEN", desa: "Cirinten", kabupaten: "Kabupaten Lebak", status: "terverifikasi" }] : []);
   }
   if (u.pathname === "/sb/rest/v1/rpc/tednas_komunitas_info") {
     const b = JSON.parse(isi);
@@ -409,6 +415,42 @@ await uji("tautan komunitas ToT: daftar?k=7 → spanduk komunitas → tercatat d
   await halaman.waitForTimeout(300);
   assert.equal(await halaman.isVisible("#komunitas-pita"), false);
   assert.equal(await halaman.evaluate(() => localStorage.getItem("tednas_ref_komunitas")), null);
+});
+
+await uji("kode tim pengajak (migrasi 19): daftar?r=ted-54 terisi & dicek → tercatat; sukses menampilkan tautan ajak; kode salah menahan langkah", async () => {
+  assert.equal(daftarTerakhir.p_pengajak, undefined, "pendaftaran tanpa kode pengajak tidak mengirim p_pengajak");
+  await isiFormulir({ tim: "Garuda Ajakan", wa: "081234567894", awal: "E", jalur: "/daftar?r=ted-54" });
+  assert.match(await halaman.textContent("#ulasan"), /Diajak timTED-00054 · DESA CIRINTEN/);
+  await halaman.click("#lanjut");
+  await halaman.waitForSelector("#sukses:not([hidden])", { timeout: 60000 });
+  assert.equal(daftarTerakhir.p_pengajak, "TED-00054");
+  const kode = (await halaman.textContent("#kode")).trim();
+  assert.equal(await halaman.textContent("#ajak-tautan"), `Kode timmu: ${kode} · https://esportsdesa.id/r/${kode}`);
+  assert.ok((await halaman.getAttribute("#ajak-wa", "href")).includes(encodeURIComponent(`https://esportsdesa.id/r/${kode}`)));
+  assert.equal(await halaman.evaluate(() => localStorage.getItem("tednas_ref_tim")), null, "kode pengajak dilupakan sesudah terdaftar");
+
+  // Kode salah dari tautan: tampil "tidak ditemukan", langkah 2 tertahan sampai diperbaiki atau dikosongkan.
+  await halaman.goto(`${ASAL}/daftar?r=TED-99999`);
+  await halaman.waitForSelector("#form:not([hidden])");
+  await halaman.check("#setuju-aturan"); await halaman.click("#lanjut");
+  await halaman.waitForSelector("#prov option[value='35']", { state: "attached" }); await halaman.selectOption("#prov", "35");
+  await halaman.waitForSelector("#kab option[value='35.07']", { state: "attached" }); await halaman.selectOption("#kab", "35.07");
+  await halaman.waitForSelector("#cari-desa:not([disabled])"); await halaman.fill("#cari-desa", "Mangliawan"); await halaman.click(".desa-opsi:not(:disabled)");
+  await halaman.click("#lanjut");
+  assert.equal(await halaman.inputValue("#pengajak"), "TED-99999");
+  await halaman.waitForFunction(() => /tidak ditemukan/.test(document.querySelector("#pengajak-info").textContent));
+  await halaman.fill("#nama-tim", "Tim Salah Kode");
+  for (let i = 1; i <= 5; i++) await halaman.fill(`#pemain-${i}`, `F Pemain ${i}`);
+  await halaman.fill("#wa", "081234567895");
+  for (let i = 2; i <= 5; i++) await halaman.fill(`#wa-pemain-${i}`, `0813 1111 ${String(i).padStart(4, "0")}`);
+  await halaman.click("#lanjut");
+  assert.match(await halaman.textContent("#salah"), /Kode tim yang mengajak belum benar/);
+  await halaman.fill("#pengajak", "ted 54");
+  await halaman.waitForFunction(() => /✓ TED-00054 · DESA CIRINTEN, Desa Cirinten, Kabupaten Lebak/.test(document.querySelector("#pengajak-info").textContent));
+  await halaman.fill("#pengajak", "");
+  await halaman.waitForTimeout(450);
+  await halaman.click("#lanjut");
+  await halaman.waitForSelector("#pemain-berkas .blok-pemain");
 });
 
 await uji("tanpa galat skrip di halaman", async () => { assert.deepEqual(galatKonsol, []); });

@@ -16,6 +16,7 @@
     WA_PEMAIN_TIDAK_VALID: 'Nomor WA salah satu pemain belum benar. Contoh: 081234567890.',
     TWIBBON_TIDAK_ADA: 'Screenshot post twibbon belum terunggah. Coba unggah lagi.',
     WA_SUDAH_ADA: 'Nomor WA ini sudah dipakai mendaftarkan tim lain.',
+    PENGAJAK_TIDAK_ADA: 'Kode tim yang mengajak tidak ditemukan. Periksa lagi atau kosongkan isiannya.',
     CAPTCHA_GAGAL: 'Captcha-nya gagal atau kedaluwarsa. Coba sekali lagi.',
     CAPTCHA_BELUM_SIAP: 'Pendaftaran belum bisa diproses. Coba lagi nanti ya.',
     DRIVE_SIBUK: 'Server berkas sedang ramai. Tunggu sebentar lalu tekan Kirim lagi ya, berkas yang sudah terunggah tidak diulang.',
@@ -52,6 +53,27 @@
 
   let langkah = 0, desaSemua = [], desaPilih = null, sedangKirim = false;
   let komunitas = null; // {id, nama, kota} dari tautan komunitas ToT (common.js U.komunitas)
+  // Kode tim pengajak (migrasi 19): {kode, nama_tim, desa, kabupaten} bila ketemu; status kosong | cek | ok | salah.
+  let pengajak = null, statusPengajak = 'kosong', urutCek = 0;
+  const INFO_PENGAJAK = 'Diajak tim lain? Isi kode timnya supaya tim itu dapat poin di papan peringkat ajak tim.';
+  function infoPengajak(teks, kelas = '') { const i = $('#pengajak-info'); i.textContent = teks; i.className = kelas; }
+  async function cekPengajak() {
+    const mentah = $('#pengajak').value.trim(), kode = U.kodeTim(mentah), ke = ++urutCek;
+    pengajak = null;
+    if (!mentah) { statusPengajak = 'kosong'; infoPengajak(INFO_PENGAJAK); return; }
+    if (!kode) { statusPengajak = 'salah'; infoPengajak('Kode tim seperti TED-00054 (lihat bukti pendaftaran tim yang mengajak).', 'salah'); return; }
+    statusPengajak = 'cek'; infoPengajak(`Mengecek ${kode}…`);
+    try {
+      const t = await DB.timPengajak(kode);
+      if (ke !== urutCek) return; // sudah diketik ulang
+      if (!t) { statusPengajak = 'salah'; infoPengajak(`Kode ${kode} tidak ditemukan.`, 'salah'); return; }
+      pengajak = t; statusPengajak = 'ok';
+      infoPengajak(`✓ ${t.kode} · ${t.nama_tim}, Desa ${t.desa}, ${t.kabupaten}`, 'ok');
+    } catch (e) { if (ke === urutCek) { statusPengajak = 'salah'; infoPengajak('Kode belum bisa dicek. Cek koneksi lalu ketik ulang.', 'salah'); } }
+  }
+  let tundaCek = null;
+  $('#pengajak').addEventListener('input', () => { clearTimeout(tundaCek); statusPengajak = 'cek'; tundaCek = setTimeout(cekPengajak, 350); });
+  $('#pengajak').addEventListener('blur', () => { const k = U.kodeTim($('#pengajak').value); if (k) $('#pengajak').value = k; });
 
   async function muatKomunitas() {
     const id = U.komunitas.ambil();
@@ -98,6 +120,7 @@
       ['Desa', `${desaPilih[1]} (Kec. ${desaPilih[2]})`],
       ['Nama tim', $('#nama-tim').value.trim()], ['WhatsApp kapten', '+' + waNormal()],
       ...(komunitas ? [['Komunitas', komunitas.nama]] : []),
+      ...(pengajak ? [['Diajak tim', `${pengajak.kode} · ${pengajak.nama_tim}`]] : []),
       ...pemainAktif().map((i) => [labelPemain(i), `${namaPemain(i)} · +${waPemain(i)} · ${pemain[i].jenis} + profil ML + 2 bukti follow IG${pemain[i].bawah17 ? ' + surat izin' : ''}`]),
       ['Bukti twibbon', twibbon.file ? twibbon.file.name : '-']
     ];
@@ -123,6 +146,8 @@
       for (const i of pemainAktif().slice(1)) {
         if (!waSah(waPemain(i))) return `Nomor WhatsApp ${labelPemain(i).toLowerCase()} belum diisi atau belum benar. Contoh: 081234567890.`;
       }
+      if (statusPengajak === 'cek') return 'Sebentar, kode tim yang mengajak sedang dicek.';
+      if (statusPengajak === 'salah') return 'Kode tim yang mengajak belum benar. Periksa lagi atau kosongkan isiannya.';
     }
     if (langkah === 3) {
       for (const i of pemainAktif()) {
@@ -346,7 +371,8 @@
         pemain: aktif.map((i) => ({ nama: namaPemain(i), wa: i ? waPemain(i) : null, dokumen_jenis: pemain[i].jenis, dokumen_path: pemain[i].pathDok, profil_ml_path: pemain[i].pathMl, follow_esports_path: pemain[i].pathIg1, follow_ppdt_path: pemain[i].pathIg2, izin_path: pemain[i].bawah17 ? pemain[i].pathIzin : null })),
         twibbon: twibbon.path,
         captcha: captchaToken,
-        komunitas: komunitas ? komunitas.id : null
+        komunitas: komunitas ? komunitas.id : null,
+        pengajak: pengajak ? pengajak.kode : null
       });
       $('#form').hidden = true; $('#komunitas-pita').hidden = true; $('#sukses').hidden = false;
       if (komunitas && hasil.komunitas === komunitas.id) {
@@ -354,6 +380,11 @@
         $('#sukses-komunitas').hidden = false;
       }
       $('#kode').textContent = hasil.kode;
+      // Program ajak tim: kode tim baru langsung bisa dibagikan.
+      U.pengajak.hapus();
+      const ajak = `https://esportsdesa.id/r/${hasil.kode}`;
+      $('#ajak-tautan').textContent = `Kode timmu: ${hasil.kode} · ${ajak}`;
+      $('#ajak-wa').href = 'https://wa.me/?text=' + encodeURIComponent(`Ayo daftar Turnamen Esports Desa Nasional 2027, GRATIS! Daftar lewat tautan ini (kode tim pengajak ${hasil.kode} sudah terisi): ${ajak}`);
       $('#sukses-teks').textContent = `${$('#nama-tim').value.trim()}, wakil ${desaPilih[1]}, ${teksPilihan(el.kab)}.`;
       const grup = (window.APP_CONFIG || {}).WA_GRUP;
       if (grup) { $('#wa-grup-link').href = grup; $('#wa-grup').hidden = false; }
@@ -383,6 +414,8 @@
     if (Date.now() < buka) { tungguBuka(buka); return; }
     $('#form').hidden = false;
     muatKomunitas();
+    const r = U.pengajak.ambil();
+    if (r) { $('#pengajak').value = r; cekPengajak(); }
     await muatProvinsi();
   })();
 
